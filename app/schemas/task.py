@@ -1,21 +1,8 @@
-from datetime import UTC, date, datetime
-from enum import StrEnum
+from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
-class TaskStatus(StrEnum):
-    TODO = "TODO"
-    IN_PROGRESS = "IN_PROGRESS"
-    IN_REVIEW = "IN_REVIEW"
-    DONE = "DONE"
-
-
-class TaskPriority(StrEnum):
-    LOW = "LOW"
-    MEDIUM = "MEDIUM"
-    HIGH = "HIGH"
-    URGENT = "URGENT"
+from app.core.enums import TaskPriority, TaskStatus
 
 
 class TaskBase(BaseModel):
@@ -24,23 +11,46 @@ class TaskBase(BaseModel):
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
     due_date: date | None = None
+    assignee_id: int | None = Field(default=None, gt=0)
 
 
 class TaskCreate(TaskBase):
-    pass
+    project_id: int = Field(gt=0)
+    created_by: int = Field(gt=0)
 
 
 class TaskUpdate(BaseModel):
-    """PATCH: tất cả field đều optional."""
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+    )
     description: str | None = None
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     due_date: date | None = None
+    assignee_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def reject_null_for_required_columns(self) -> "TaskUpdate":
+        for name in ("title", "status", "priority"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+
+        return self
 
 
 class TaskRead(TaskBase):
-    model_config = ConfigDict(from_attributes=True)  # sẵn sàng đọc từ ORM ở Day 2
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
+    project_id: int
+    created_by: int
     created_at: datetime
+
+
+class TaskPage(BaseModel):
+    items: list[TaskRead]
+    total: int
+    page: int
+    limit: int

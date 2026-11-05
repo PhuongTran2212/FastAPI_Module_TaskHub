@@ -2,22 +2,26 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy import text
 
 from app.api.v1.router import api_router
+from app.db.session import engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Startup: sau này khởi tạo DB engine, Redis connection ở đây
-    print("TaskHub starting...")
-    yield
-    # Shutdown: đóng connection
-    print("TaskHub shutting down...")
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+
+        yield
+    finally:
+        await engine.dispose()
 
 
 app = FastAPI(
     title="TaskHub API",
-    version="0.1.0",
+    version="0.2.0",
     description="Task Management API",
     lifespan=lifespan,
 )
