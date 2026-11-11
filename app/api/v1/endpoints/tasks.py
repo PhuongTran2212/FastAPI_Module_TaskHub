@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
 
-from app.api.deps import TaskServiceDep
+from app.api.deps import CurrentUser, TaskServiceDep
 from app.core.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
 from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.error import ErrorResponse
@@ -73,9 +73,10 @@ async def list_tasks(
 )
 async def create_task(
     data: TaskCreate,
+    current_user: CurrentUser,
     service: TaskServiceDep,
 ) -> TaskRead:
-    return await service.create_task(data)
+    return await service.create_task(data, creator_id=current_user.id)
 
 
 @router.get(

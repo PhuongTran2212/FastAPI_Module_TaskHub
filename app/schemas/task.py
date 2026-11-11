@@ -29,7 +29,7 @@ class TaskCreate(TaskBase):
     model_config = ConfigDict(extra="forbid")
 
     project_id: int = Field(gt=0)
-    created_by: int = Field(gt=0)
+
 
     @field_validator("due_date")
     @classmethod

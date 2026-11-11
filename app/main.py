@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="TaskHub API",
-    version="0.2.0",
+    version="0.3.0",
     description="Task Management API",
     lifespan=lifespan,
 )
