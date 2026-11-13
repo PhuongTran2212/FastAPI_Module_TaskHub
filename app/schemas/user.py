@@ -7,6 +7,8 @@ from pydantic import (
     EmailStr,
     Field,
     StringConstraints,
+    field_validator,
+    model_validator,
 )
 
 from app.core import messages
@@ -15,6 +17,7 @@ from app.core.constants import (
     EMAIL_MAX_LENGTH,
     MIN_TEXT_LENGTH,
     PASSWORD_MIN_LENGTH,
+    USER_FULL_NAME_MAX_LENGTH,
 )
 from app.core.enums import UserRole
 from app.schemas.base import BaseSchema
@@ -60,3 +63,38 @@ class UserRead(BaseSchema):
     role: UserRole
     is_active: bool
     created_at: datetime
+
+
+class UserUpdate(BaseSchema):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str | None = Field(
+        default=None, min_length=MIN_TEXT_LENGTH, max_length=USER_FULL_NAME_MAX_LENGTH
+    )
+
+    @field_validator("full_name")
+    @classmethod
+    def reject_null_full_name(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError(messages.FULL_NAME_CANNOT_BE_NULL)
+        return value
+
+
+class ChangePasswordRequest(BaseSchema):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: CurrentPassword
+    new_password: Password
+
+    @model_validator(mode="after")
+    def new_password_must_differ(self) -> "ChangePasswordRequest":
+        if self.new_password == self.current_password:
+            raise ValueError(messages.PASSWORD_MUST_DIFFER)
+        return self
+
+
+class UserPage(BaseSchema):
+    items: list[UserRead]
+    total: int
+    page: int
+    limit: int

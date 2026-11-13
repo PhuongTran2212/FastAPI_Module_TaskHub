@@ -17,6 +17,7 @@ from app.repositories.task_repository import TaskRepository
 from app.repositories.user_repository import UserRepository
 from app.services.auth_service import AuthService
 from app.services.task_service import TaskService
+from app.services.user_service import UserService
 
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -52,6 +53,12 @@ def get_auth_service(
     return AuthService(users, refresh_tokens)
 
 
+def get_user_service(
+    users: UserRepoDep, refresh_tokens: RefreshTokenRepoDep
+) -> UserService:
+    return UserService(users, refresh_tokens)
+
+
 def get_task_service(
     repo: TaskRepoDep, projects: ProjectRepoDep, users: UserRepoDep
 ) -> TaskService:
@@ -59,6 +66,7 @@ def get_task_service(
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
 
 

@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import TaskServiceDep
-from app.core.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
+from app.api.pagination import PaginationDep
 from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.error import ErrorResponse
 from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
@@ -40,19 +40,15 @@ CONFLICT_RESPONSES = {
 )
 async def list_tasks(
     service: TaskServiceDep,
-    page: Annotated[int, Query(ge=1)] = 1,
-    limit: Annotated[
-        int,
-        Query(ge=1, le=MAX_PAGE_LIMIT),
-    ] = DEFAULT_PAGE_LIMIT,
+    pagination: PaginationDep,
     project_id: Annotated[int | None, Query(gt=0)] = None,
     status: TaskStatus | None = None,
     priority: TaskPriority | None = None,
     assignee_id: Annotated[int | None, Query(gt=0)] = None,
 ) -> TaskPage:
     return await service.list_tasks(
-        page=page,
-        limit=limit,
+        page=pagination.page,
+        limit=pagination.limit,
         project_id=project_id,
         status=status,
         priority=priority,
