@@ -1,25 +1,56 @@
-from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy.exc import IntegrityError
+from typing import Annotated
+
+from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import TaskServiceDep
+from app.core.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
 from app.core.enums import TaskPriority, TaskStatus
+from app.schemas.error import ErrorResponse
 from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
-from app.services.task_service import InvalidTaskReference
 
 
 router = APIRouter()
 
+VALIDATION_RESPONSES = {
+    422: {
+        "description": "Invalid request data or task reference",
+    },
+}
 
-@router.get("", response_model=TaskPage)
+TASK_RESPONSES = {
+    **VALIDATION_RESPONSES,
+    404: {
+        "model": ErrorResponse,
+        "description": "Task not found",
+    },
+}
+
+CONFLICT_RESPONSES = {
+    409: {
+        "model": ErrorResponse,
+        "description": "Task data conflicts with database constraints",
+    },
+}
+
+
+@router.get(
+    "",
+    response_model=TaskPage,
+    summary="List tasks",
+    responses=VALIDATION_RESPONSES,
+)
 async def list_tasks(
     service: TaskServiceDep,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    project_id: int | None = Query(None, gt=0),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=MAX_PAGE_LIMIT),
+    ] = DEFAULT_PAGE_LIMIT,
+    project_id: Annotated[int | None, Query(gt=0)] = None,
     status: TaskStatus | None = None,
     priority: TaskPriority | None = None,
-    assignee_id: int | None = Query(None, gt=0),
-):
+    assignee_id: Annotated[int | None, Query(gt=0)] = None,
+) -> TaskPage:
     return await service.list_tasks(
         page=page,
         limit=limit,
@@ -34,62 +65,63 @@ async def list_tasks(
     "",
     response_model=TaskRead,
     status_code=status.HTTP_201_CREATED,
+    summary="Create a task",
+    responses={
+        **VALIDATION_RESPONSES,
+        **CONFLICT_RESPONSES,
+    },
 )
-async def create_task(data: TaskCreate, service: TaskServiceDep):
-    try:
-        return await service.create_task(data)
-    except InvalidTaskReference as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except IntegrityError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="Task data conflicts with database constraints",
-        ) from exc
+async def create_task(
+    data: TaskCreate,
+    service: TaskServiceDep,
+) -> TaskRead:
+    return await service.create_task(data)
 
 
-@router.get("/{task_id}", response_model=TaskRead)
-async def get_task(task_id: int, service: TaskServiceDep):
-    task = await service.get_task(task_id)
+@router.get(
+    "/{task_id}",
+    response_model=TaskRead,
+    summary="Get a task",
+    responses=TASK_RESPONSES,
+)
+async def get_task(
+    task_id: int,
+    service: TaskServiceDep,
+) -> TaskRead:
+    return await service.get_task(task_id)
 
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
 
-    return task
-
-
-@router.patch("/{task_id}", response_model=TaskRead)
+@router.patch(
+    "/{task_id}",
+    response_model=TaskRead,
+    summary="Update a task",
+    responses={
+        **TASK_RESPONSES,
+        **CONFLICT_RESPONSES,
+    },
+)
 async def update_task(
     task_id: int,
     data: TaskUpdate,
     service: TaskServiceDep,
-):
-    try:
-        task = await service.update_task(task_id, data)
-    except InvalidTaskReference as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except IntegrityError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="Task data conflicts with database constraints",
-        ) from exc
-
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    return task
+) -> TaskRead:
+    return await service.update_task(task_id, data)
 
 
-@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task(task_id: int, service: TaskServiceDep):
-    try:
-        deleted = await service.delete_task(task_id)
-    except IntegrityError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="Task is still referenced",
-        ) from exc
-
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Task not found")
+@router.delete(
+    "/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    summary="Delete a task",
+    responses={
+        **TASK_RESPONSES,
+        **CONFLICT_RESPONSES,
+    },
+)
+async def delete_task(
+    task_id: int,
+    service: TaskServiceDep,
+) -> Response:
+    await service.delete_task(task_id)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

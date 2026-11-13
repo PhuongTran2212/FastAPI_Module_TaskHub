@@ -1,5 +1,5 @@
 from datetime import date, datetime
-
+from app.core.constants import TASK_TITLE_MAX_LENGTH
 from sqlalchemy import (
     Boolean,
     Column,
@@ -86,7 +86,7 @@ class Workspace(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
     owner_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="RESTRICT"),
         index=True,
     )
 
@@ -187,11 +187,13 @@ class Task(TimestampMixin, Base):
     )
 
     assignee_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
     )
 
-    title: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(
+        String(TASK_TITLE_MAX_LENGTH),
+    )
     description: Mapped[str | None] = mapped_column(Text)
 
     status: Mapped[TaskStatus] = mapped_column(
@@ -222,7 +224,7 @@ class Task(TimestampMixin, Base):
     due_date: Mapped[date | None] = mapped_column(Date)
 
     created_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="RESTRICT"),
         index=True,
     )
 
@@ -299,7 +301,7 @@ class Comment(TimestampMixin, Base):
     )
 
     author_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="RESTRICT"),
         index=True,
     )
 

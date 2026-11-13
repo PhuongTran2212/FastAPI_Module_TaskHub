@@ -1,16 +1,38 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from sqlalchemy.exc import IntegrityError
+
 from app.core.enums import TaskPriority, TaskStatus
-from app.models import Project, User
+from app.core.exceptions import (
+    ConflictException,
+    InvalidReferenceException,
+    NotFoundException,
+)
+from app.repositories.project_repository import ProjectRepository
 from app.repositories.task_repository import TaskRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
 
 
-class InvalidTaskReference(ValueError):
-    pass
-
-
 class TaskService:
-    def __init__(self, repo: TaskRepository) -> None:
+    def __init__(
+        self,
+        repo: TaskRepository,
+        projects: ProjectRepository,
+        users: UserRepository,
+    ) -> None:
         self.repo = repo
+        self.projects = projects
+        self.users = users
+
+    @asynccontextmanager
+    async def _transaction(self) -> AsyncIterator[None]:
+        try:
+            async with self.repo.session.begin():
+                yield
+        except IntegrityError as exc:
+            raise ConflictException() from exc
 
     async def list_tasks(
         self,
@@ -37,58 +59,62 @@ class TaskService:
             limit=limit,
         )
 
-    async def get_task(self, task_id: int) -> TaskRead | None:
+    async def get_task(self, task_id: int) -> TaskRead:
         task = await self.repo.get(task_id)
 
         if task is None:
-            return None
+            raise NotFoundException("Task")
 
         return TaskRead.model_validate(task)
 
     async def create_task(self, data: TaskCreate) -> TaskRead:
-        async with self.repo.session.begin():
-            project = await self.repo.session.get(Project, data.project_id)
+        async with self._transaction():
+            project = await self.projects.get(data.project_id)
             if project is None:
-                raise InvalidTaskReference("Project not found")
+                raise InvalidReferenceException("Project")
 
-            creator = await self.repo.session.get(User, data.created_by)
+            creator = await self.users.get(data.created_by)
             if creator is None:
-                raise InvalidTaskReference("Creator not found")
+                raise InvalidReferenceException("Creator")
 
             if data.assignee_id is not None:
-                assignee = await self.repo.session.get(User, data.assignee_id)
+                assignee = await self.users.get(data.assignee_id)
                 if assignee is None:
-                    raise InvalidTaskReference("Assignee not found")
+                    raise InvalidReferenceException("Assignee")
 
-            task = await self.repo.create(data.model_dump())
+            values = data.model_dump()
+            values["status"] = TaskStatus.TODO
+
+            task = await self.repo.create(values)
             return TaskRead.model_validate(task)
 
     async def update_task(
         self,
         task_id: int,
         data: TaskUpdate,
-    ) -> TaskRead | None:
-        async with self.repo.session.begin():
+    ) -> TaskRead:
+        async with self._transaction():
             task = await self.repo.get(task_id)
+
             if task is None:
-                return None
+                raise NotFoundException("Task")
 
             changes = data.model_dump(exclude_unset=True)
 
             assignee_id = changes.get("assignee_id")
             if assignee_id is not None:
-                assignee = await self.repo.session.get(User, assignee_id)
+                assignee = await self.users.get(assignee_id)
                 if assignee is None:
-                    raise InvalidTaskReference("Assignee not found")
+                    raise InvalidReferenceException("Assignee")
 
             task = await self.repo.update(task, changes)
             return TaskRead.model_validate(task)
 
-    async def delete_task(self, task_id: int) -> bool:
-        async with self.repo.session.begin():
+    async def delete_task(self, task_id: int) -> None:
+        async with self._transaction():
             task = await self.repo.get(task_id)
+
             if task is None:
-                return False
+                raise NotFoundException("Task")
 
             await self.repo.delete(task)
-            return True

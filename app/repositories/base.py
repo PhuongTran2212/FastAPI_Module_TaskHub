@@ -3,6 +3,7 @@ from typing import Any, Generic, TypeVar
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.constants import DEFAULT_PAGE_LIMIT
 from app.db.base import Base
 
 
@@ -21,7 +22,7 @@ class BaseRepository(Generic[T]):
         self,
         *,
         offset: int = 0,
-        limit: int = 20,
+        limit: int = DEFAULT_PAGE_LIMIT,
     ) -> list[T]:
         stmt = (
             select(self.model)
