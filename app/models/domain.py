@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from app.core.constants import TASK_TITLE_MAX_LENGTH
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -17,6 +17,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.constants import (
+    JWT_JTI_MAX_LENGTH,
+    PASSWORD_HASH_MAX_LENGTH,
+    TASK_TITLE_MAX_LENGTH,
+    USER_FULL_NAME_MAX_LENGTH,
+)
 from app.core.enums import (
     ProjectStatus,
     TaskPriority,
@@ -41,6 +47,7 @@ task_labels = Table(
     ),
 )
 
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -59,8 +66,8 @@ class User(TimestampMixin, Base):
         String(255),
         unique=True,
     )
-    full_name: Mapped[str] = mapped_column(String(255))
-    hashed_password: Mapped[str] = mapped_column(String(255))
+    full_name: Mapped[str] = mapped_column(String(USER_FULL_NAME_MAX_LENGTH))
+    hashed_password: Mapped[str] = mapped_column(String(PASSWORD_HASH_MAX_LENGTH))
 
     role: Mapped[UserRole] = mapped_column(
         Enum(
@@ -79,6 +86,7 @@ class User(TimestampMixin, Base):
         default=True,
         server_default=true(),
     )
+
 
 class Workspace(TimestampMixin, Base):
     __tablename__ = "workspaces"
@@ -134,6 +142,7 @@ class WorkspaceMember(Base):
     )
     user: Mapped[User] = relationship(lazy="raise")
 
+
 class Project(TimestampMixin, Base):
     __tablename__ = "projects"
 
@@ -175,6 +184,7 @@ class Project(TimestampMixin, Base):
         lazy="raise",
         passive_deletes="all",
     )
+
 
 class Task(TimestampMixin, Base):
     __tablename__ = "tasks"
@@ -256,12 +266,11 @@ class Task(TimestampMixin, Base):
         passive_deletes="all",
     )
 
+
 class Label(Base):
     __tablename__ = "labels"
 
-    __table_args__ = (
-        UniqueConstraint("project_id", "name"),
-    )
+    __table_args__ = (UniqueConstraint("project_id", "name"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
@@ -290,6 +299,7 @@ class Label(Base):
         passive_deletes=True,
     )
 
+
 class Comment(TimestampMixin, Base):
     __tablename__ = "comments"
 
@@ -313,3 +323,24 @@ class Comment(TimestampMixin, Base):
     )
 
     author: Mapped[User] = relationship(lazy="raise")
+
+
+class RefreshToken(TimestampMixin, Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+
+    jti: Mapped[str] = mapped_column(String(JWT_JTI_MAX_LENGTH), unique=True)
+
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+    user: Mapped[User] = relationship(lazy="raise")

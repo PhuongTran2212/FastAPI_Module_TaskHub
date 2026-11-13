@@ -1,4 +1,5 @@
 import os
+import secrets
 import subprocess
 import sys
 from collections.abc import AsyncIterator, Callable
@@ -45,7 +46,9 @@ def load_test_database_url() -> str:
     if application_value:
         application_url = make_url(application_value)
         if (test_url.host, test_url.port or 5432, test_url.database) == (
-            application_url.host, application_url.port or 5432, application_url.database
+            application_url.host,
+            application_url.port or 5432,
+            application_url.database,
         ):
             raise pytest.UsageError("The test and application databases must differ.")
     return value
@@ -54,7 +57,10 @@ def load_test_database_url() -> str:
 TEST_DATABASE_URL = load_test_database_url()
 # Configure before importing the app so its lifespan uses the test DB too.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["JWT_SECRET_KEY"] = secrets.token_hex(32)
 
+from app.api.deps import CurrentUser  # noqa: E402
+from app.core.security import create_access_token  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Project, User, Workspace  # noqa: E402
@@ -114,10 +120,16 @@ def session_factory(db_connection) -> async_sessionmaker[AsyncSession]:
 async def seed_data(session_factory) -> dict[str, int]:
     async with session_factory() as session:
         async with session.begin():
-            creator = User(email="creator@example.test", full_name="Creator",
-                hashed_password="TEST_LOGIN_DISABLED")
-            assignee = User(email="assignee@example.test", full_name="Assignee",
-                hashed_password="TEST_LOGIN_DISABLED")
+            creator = User(
+                email="creator@example.test",
+                full_name="Creator",
+                hashed_password="TEST_LOGIN_DISABLED",
+            )
+            assignee = User(
+                email="assignee@example.test",
+                full_name="Assignee",
+                hashed_password="TEST_LOGIN_DISABLED",
+            )
             session.add_all([creator, assignee])
             await session.flush()
             workspace = Workspace(name="Test workspace", owner_id=creator.id)
@@ -128,8 +140,10 @@ async def seed_data(session_factory) -> dict[str, int]:
             session.add_all([project, other_project])
             await session.flush()
             return {
-                "creator_id": creator.id, "assignee_id": assignee.id,
-                "workspace_id": workspace.id, "project_id": project.id,
+                "creator_id": creator.id,
+                "assignee_id": assignee.id,
+                "workspace_id": workspace.id,
+                "project_id": project.id,
                 "other_project_id": other_project.id,
             }
 
@@ -145,9 +159,19 @@ async def client(session_factory, seed_data) -> AsyncIterator[AsyncClient]:
     try:
         async with app.router.lifespan_context(app):
             async with AsyncClient(
-                transport=ASGITransport(app), base_url="http://testserver",
+                transport=ASGITransport(app),
+                base_url="http://testserver",
+                headers={
+                    "Authorization": "Bearer "
+                    + create_access_token(seed_data["creator_id"])
+                },
             ) as test_client:
                 yield test_client
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous_overrides)
+
+
+@app.get("/__test__/protected", include_in_schema=False)
+async def protected_test_route(current_user: CurrentUser) -> dict[str, int]:
+    return {"id": current_user.id}
