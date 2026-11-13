@@ -2,33 +2,25 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
 
-from app.api.deps import TaskServiceDep
+from app.api.deps import CurrentUser, TaskServiceDep
 from app.api.pagination import PaginationDep
+from app.api.responses import AUTH_RESPONSES, VALIDATION_RESPONSES
+from app.core import messages
 from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.error import ErrorResponse
 from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
 
 router = APIRouter()
-
-VALIDATION_RESPONSES = {
-    422: {
-        "description": "Invalid request data or task reference",
-    },
-}
-
 TASK_RESPONSES = {
     **VALIDATION_RESPONSES,
+    **AUTH_RESPONSES,
     404: {
         "model": ErrorResponse,
-        "description": "Task not found",
+        "description": messages.RESOURCE_NOT_FOUND.format(resource="Task"),
     },
 }
-
 CONFLICT_RESPONSES = {
-    409: {
-        "model": ErrorResponse,
-        "description": "Task data conflicts with database constraints",
-    },
+    409: {"model": ErrorResponse, "description": messages.TASK_CONFLICT}
 }
 
 
@@ -36,7 +28,7 @@ CONFLICT_RESPONSES = {
     "",
     response_model=TaskPage,
     summary="List tasks",
-    responses=VALIDATION_RESPONSES,
+    responses={**VALIDATION_RESPONSES, **AUTH_RESPONSES},
 )
 async def list_tasks(
     service: TaskServiceDep,
@@ -61,16 +53,12 @@ async def list_tasks(
     response_model=TaskRead,
     status_code=status.HTTP_201_CREATED,
     summary="Create a task",
-    responses={
-        **VALIDATION_RESPONSES,
-        **CONFLICT_RESPONSES,
-    },
+    responses={**VALIDATION_RESPONSES, **AUTH_RESPONSES, **CONFLICT_RESPONSES},
 )
 async def create_task(
-    data: TaskCreate,
-    service: TaskServiceDep,
+    data: TaskCreate, current_user: CurrentUser, service: TaskServiceDep
 ) -> TaskRead:
-    return await service.create_task(data)
+    return await service.create_task(data, creator_id=current_user.id)
 
 
 @router.get(
@@ -79,10 +67,7 @@ async def create_task(
     summary="Get a task",
     responses=TASK_RESPONSES,
 )
-async def get_task(
-    task_id: int,
-    service: TaskServiceDep,
-) -> TaskRead:
+async def get_task(task_id: int, service: TaskServiceDep) -> TaskRead:
     return await service.get_task(task_id)
 
 
@@ -90,15 +75,10 @@ async def get_task(
     "/{task_id}",
     response_model=TaskRead,
     summary="Update a task",
-    responses={
-        **TASK_RESPONSES,
-        **CONFLICT_RESPONSES,
-    },
+    responses={**TASK_RESPONSES, **CONFLICT_RESPONSES},
 )
 async def update_task(
-    task_id: int,
-    data: TaskUpdate,
-    service: TaskServiceDep,
+    task_id: int, data: TaskUpdate, service: TaskServiceDep
 ) -> TaskRead:
     return await service.update_task(task_id, data)
 
@@ -108,15 +88,8 @@ async def update_task(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
     summary="Delete a task",
-    responses={
-        **TASK_RESPONSES,
-        **CONFLICT_RESPONSES,
-    },
+    responses={**TASK_RESPONSES, **CONFLICT_RESPONSES},
 )
-async def delete_task(
-    task_id: int,
-    service: TaskServiceDep,
-) -> Response:
+async def delete_task(task_id: int, service: TaskServiceDep) -> Response:
     await service.delete_task(task_id)
-
     return Response(status_code=status.HTTP_204_NO_CONTENT)

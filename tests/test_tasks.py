@@ -16,7 +16,6 @@ async def create_task(client: AsyncClient, seed_data: dict, **fields) -> dict:
         json={
             "title": "Task test",
             "project_id": seed_data["project_id"],
-            "created_by": seed_data["creator_id"],
             **fields,
         },
     )
@@ -84,7 +83,6 @@ async def test_invalid_title(client, seed_data, method, title):
         path = URL
         payload = {
             "project_id": seed_data["project_id"],
-            "created_by": seed_data["creator_id"],
         }
     else:
         task = await create_task(client, seed_data)
@@ -108,7 +106,6 @@ async def test_create_requires_title(client, seed_data):
         URL,
         json={
             "project_id": seed_data["project_id"],
-            "created_by": seed_data["creator_id"],
         },
     )
     assert response.status_code == 422
@@ -130,7 +127,6 @@ async def test_create_rejects_status(client, seed_data, value):
         json={
             "title": "Task",
             "project_id": seed_data["project_id"],
-            "created_by": seed_data["creator_id"],
             "status": value,
         },
     )
@@ -146,7 +142,6 @@ async def test_reject_past_due_date(client, seed_data, method):
         payload = {
             "title": "Task",
             "project_id": seed_data["project_id"],
-            "created_by": seed_data["creator_id"],
         }
     else:
         task = await create_task(client, seed_data)
@@ -228,12 +223,7 @@ async def test_patch_can_clear_nullable_fields(client, seed_data):
 async def test_invalid_values(client, seed_data, method, payload):
     if method == "POST":
         path = URL
-        payload = {
-            "title": "Task",
-            "project_id": seed_data["project_id"],
-            "created_by": seed_data["creator_id"],
-            **payload,
-        }
+        payload = {"title": "Task", "project_id": seed_data["project_id"], **payload}
     else:
         task = await create_task(client, seed_data)
         path = f"{URL}/{task['id']}"
@@ -250,7 +240,6 @@ async def test_patch_rejects_invalid_status(client, seed_data):
     "field,resource",
     [
         ("project_id", "Project"),
-        ("created_by", "Creator"),
         ("assignee_id", "Assignee"),
     ],
 )
@@ -260,7 +249,6 @@ async def test_create_rejects_missing_reference(client, seed_data, field, resour
         json={
             "title": "Task",
             "project_id": seed_data["project_id"],
-            "created_by": seed_data["creator_id"],
             field: MISSING_ID,
         },
     )
@@ -370,7 +358,6 @@ async def test_database_conflict_returns_409_and_rolls_back(
         payload = {
             "title": "constraint-conflict",
             "project_id": seed_data["project_id"],
-            "created_by": seed_data["creator_id"],
         }
     else:
         path = f"{URL}/{task['id']}"
