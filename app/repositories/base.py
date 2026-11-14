@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.constants import DEFAULT_PAGE_LIMIT
 from app.db.base import Base
 
-
 T = TypeVar("T", bound=Base)
 
 

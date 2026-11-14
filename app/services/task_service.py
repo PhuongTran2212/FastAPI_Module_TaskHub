@@ -67,13 +67,13 @@ class TaskService:
 
         return TaskRead.model_validate(task)
 
-    async def create_task(self, data: TaskCreate) -> TaskRead:
+    async def create_task(self, data: TaskCreate, creator_id: int) -> TaskRead:
         async with self._transaction():
             project = await self.projects.get(data.project_id)
             if project is None:
                 raise InvalidReferenceException("Project")
 
-            creator = await self.users.get(data.created_by)
+            creator = await self.users.get(creator_id)
             if creator is None:
                 raise InvalidReferenceException("Creator")
 
@@ -84,6 +84,7 @@ class TaskService:
 
             values = data.model_dump()
             values["status"] = TaskStatus.TODO
+            values["created_by"] = creator_id
 
             task = await self.repo.create(values)
             return TaskRead.model_validate(task)

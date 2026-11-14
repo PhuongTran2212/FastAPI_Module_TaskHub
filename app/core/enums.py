@@ -5,14 +5,17 @@ class UserRole(StrEnum):
     ADMIN = "ADMIN"
     MEMBER = "MEMBER"
 
+
 class WorkspaceRole(StrEnum):
     OWNER = "OWNER"
     EDITOR = "EDITOR"
     VIEWER = "VIEWER"
 
+
 class ProjectStatus(StrEnum):
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
+
 
 class TaskStatus(StrEnum):
     TODO = "TODO"
@@ -26,3 +29,8 @@ class TaskPriority(StrEnum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     URGENT = "URGENT"
+
+
+class TokenType(StrEnum):
+    ACCESS = "access"
+    REFRESH = "refresh"

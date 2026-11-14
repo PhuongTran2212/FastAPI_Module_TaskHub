@@ -10,7 +10,6 @@ from app.api.v1.router import api_router
 from app.core.exceptions import AppException
 from app.db.session import engine
 
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -36,7 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="TaskHub API",
-    version="0.2.0",
+    version="0.3.0",
     description="Task Management API",
     lifespan=lifespan,
 )
@@ -50,6 +49,7 @@ async def app_exception_handler(
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
+        headers=exc.headers,
     )
 
 
