@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import (
     EMAIL_MAX_LENGTH,
+    JWT_JTI_MAX_LENGTH,
     LABEL_COLOR_MAX_LENGTH,
     LABEL_NAME_MAX_LENGTH,
     PASSWORD_HASH_MAX_LENGTH,
@@ -339,7 +340,7 @@ class RefreshToken(TimestampMixin, Base):
         index=True,
     )
 
-    jti: Mapped[str] = mapped_column(String(64), unique=True)
+    jti: Mapped[str] = mapped_column(String(JWT_JTI_MAX_LENGTH), unique=True)
 
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

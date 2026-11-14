@@ -2,21 +2,22 @@ from datetime import date, datetime
 
 from pydantic import ConfigDict, Field, field_validator
 
-from app.core.constants import TASK_TITLE_MAX_LENGTH
+from app.core import messages
+from app.core.constants import MIN_TEXT_LENGTH, TASK_TITLE_MAX_LENGTH
 from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.base import BaseSchema
 
 
 def validate_due_date(value: date | None) -> date | None:
     if value is not None and value < date.today():
-        raise ValueError("due_date cannot be in the past")
+        raise ValueError(messages.DUE_DATE_IN_PAST)
 
     return value
 
 
 class TaskBase(BaseSchema):
     title: str = Field(
-        min_length=1,
+        min_length=MIN_TEXT_LENGTH,
         max_length=TASK_TITLE_MAX_LENGTH,
     )
     description: str | None = None
@@ -41,7 +42,7 @@ class TaskUpdate(BaseSchema):
 
     title: str | None = Field(
         default=None,
-        min_length=1,
+        min_length=MIN_TEXT_LENGTH,
         max_length=TASK_TITLE_MAX_LENGTH,
     )
     description: str | None = None
@@ -54,7 +55,7 @@ class TaskUpdate(BaseSchema):
     @classmethod
     def reject_null(cls, value: object) -> object:
         if value is None:
-            raise ValueError("Field cannot be null")
+            raise ValueError(messages.FIELD_CANNOT_BE_NULL)
 
         return value
 

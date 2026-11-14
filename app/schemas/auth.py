@@ -1,29 +1,45 @@
 # app/schemas/auth.py
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
-from app.schemas.user import Email, Password
+from app.core.constants import (
+    MIN_TEXT_LENGTH,
+    TOKEN_MAX_LENGTH,
+    USER_FULL_NAME_MAX_LENGTH,
+)
+from app.schemas.base import BaseSchema
+from app.schemas.user import CurrentPassword, Email, Password
 
 
-class RegisterRequest(BaseModel):
+class RegisterRequest(BaseSchema):
     model_config = ConfigDict(extra="forbid")
 
     email: Email
-    full_name: str = Field(min_length=1, max_length=255)
+    full_name: str = Field(
+        min_length=MIN_TEXT_LENGTH,
+        max_length=USER_FULL_NAME_MAX_LENGTH,
+    )
     password: Password
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(BaseSchema):
+    model_config = ConfigDict(extra="forbid")
+
     email: Email
-    password: str = Field(min_length=1)
+    password: CurrentPassword
 
 
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str = Field(min_length=1)
+class RefreshTokenRequest(BaseSchema):
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: str = Field(
+        min_length=MIN_TEXT_LENGTH,
+        max_length=TOKEN_MAX_LENGTH,
+    )
 
 
-class TokenResponse(BaseModel):
+class TokenResponse(BaseSchema):
     access_token: str
     refresh_token: str
     token_type: Literal["bearer"] = "bearer"

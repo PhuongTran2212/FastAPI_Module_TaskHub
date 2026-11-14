@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core import messages
 from app.core.config import get_settings
+from app.core.constants import SECONDS_PER_MINUTE
 from app.core.enums import TokenType
 from app.core.exceptions import (
     EmailAlreadyRegistered,
@@ -151,7 +152,7 @@ class AuthService:
         return TokenResponse(
             access_token=create_access_token(user_id),
             refresh_token=refresh_token,
-            expires_in=get_settings().access_token_expire_minutes * 60,
+            expires_in=get_settings().access_token_expire_minutes * SECONDS_PER_MINUTE,
         )
 
     @staticmethod
