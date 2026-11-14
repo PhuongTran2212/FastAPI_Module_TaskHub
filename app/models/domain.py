@@ -73,6 +73,10 @@ class User(TimestampMixin, Base):
     )
     full_name: Mapped[str] = mapped_column(String(USER_FULL_NAME_MAX_LENGTH))
     hashed_password: Mapped[str] = mapped_column(String(PASSWORD_HASH_MAX_LENGTH))
+    # Access token có iat trước mốc này bị từ chối (xem deps.get_current_user)
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
 
     role: Mapped[UserRole] = mapped_column(
         Enum(

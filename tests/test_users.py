@@ -1,10 +1,19 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from app.core import messages
 from app.core.constants import BCRYPT_MAX_BYTES
 from app.core.enums import UserRole
 from app.models import User
-from tests.auth_helpers import EMAIL, PASSWORD, bearer, login, register
+from tests.auth_helpers import (
+    EMAIL,
+    PASSWORD,
+    access_token_issued_at,
+    bearer,
+    login,
+    register,
+)
 
 
 async def test_read_and_update_my_profile(client):
@@ -44,8 +53,8 @@ async def test_users_list_requires_admin_and_returns_total(
     assert (await client.get("/api/v1/users", params={"limit": 101})).status_code == 422
 
 
-async def test_change_password_revokes_refresh_but_access_lives_until_expiry(client):
-    await register(client)
+async def test_change_password_revokes_refresh_and_older_access_tokens(client):
+    user = await register(client)
     first = await login(client)
     second = await login(client)
     headers = bearer(first["access_token"])
@@ -55,8 +64,12 @@ async def test_change_password_revokes_refresh_but_access_lives_until_expiry(cli
         json={"current_password": PASSWORD, "new_password": "New-password123!"},
     )
     assert response.status_code == 204 and response.content == b""
-    # Explicit Day 3 policy: stateless access JWTs remain valid until their expiry.
-    assert (await client.get("/api/v1/users/me", headers=headers)).status_code == 200
+    # An access token issued before the change is rejected right away.
+    issued_before = datetime.now(UTC) - timedelta(minutes=1)
+    old_access = access_token_issued_at(user["id"], issued_before)
+    response = await client.get("/api/v1/users/me", headers=bearer(old_access))
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
     for token in (first["refresh_token"], second["refresh_token"]):
         assert (
             await client.post("/api/v1/auth/refresh", json={"refresh_token": token})
@@ -66,7 +79,11 @@ async def test_change_password_revokes_refresh_but_access_lives_until_expiry(cli
             "/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD}
         )
     ).status_code == 401
-    await login(client, password="New-password123!")
+    fresh = await login(client, password="New-password123!")
+    response = await client.get(
+        "/api/v1/users/me", headers=bearer(fresh["access_token"])
+    )
+    assert response.status_code == 200
 
 
 async def test_incorrect_current_password(client):

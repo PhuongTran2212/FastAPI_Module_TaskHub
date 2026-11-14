@@ -107,6 +107,13 @@ async def get_current_user(
     if user is None:
         raise UnauthorizedException()
 
+    # Token cấp trước lần đổi mật khẩu gần nhất → không còn hiệu lực
+    if (
+        user.password_changed_at is not None
+        and payload.issued_at < user.password_changed_at
+    ):
+        raise UnauthorizedException()
+
     if not user.is_active:
         raise InactiveUser()
 

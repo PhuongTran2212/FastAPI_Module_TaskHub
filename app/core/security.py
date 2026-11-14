@@ -16,6 +16,7 @@ from app.core.exceptions import TokenError
 class TokenPayload:
     user_id: int
     jti: str
+    issued_at: datetime
 
 
 def hash_password(password: str) -> str:
@@ -101,4 +102,9 @@ def decode_token(token: str, expected_type: TokenType) -> TokenPayload:
     if not isinstance(jti, str) or not jti:
         raise TokenError(messages.INVALID_TOKEN_ID)
 
-    return TokenPayload(user_id=user_id, jti=jti)
+    return TokenPayload(
+        user_id=user_id,
+        jti=jti,
+        # PyJWT đã kiểm tra iat là số; JWT lưu iat theo giây
+        issued_at=datetime.fromtimestamp(payload["iat"], UTC),
+    )
