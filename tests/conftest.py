@@ -221,6 +221,31 @@ def make_user(session_factory) -> MakeUser:
     return factory
 
 
+@pytest_asyncio.fixture
+async def roles(make_user, session_factory, seed_data) -> dict[str, dict]:
+    """User theo từng quyền trên workspace seed (creator mặc định là OWNER)."""
+    users = {
+        "editor": await make_user(),
+        "viewer": await make_user(),
+        "outsider": await make_user(),
+        "admin": await make_user(UserRole.ADMIN),
+    }
+    async with session_factory() as session:
+        async with session.begin():
+            for name, role in (
+                ("editor", WorkspaceRole.EDITOR),
+                ("viewer", WorkspaceRole.VIEWER),
+            ):
+                session.add(
+                    WorkspaceMember(
+                        workspace_id=seed_data["workspace_id"],
+                        user_id=users[name]["id"],
+                        role=role,
+                    )
+                )
+    return users
+
+
 @app.get("/__test__/protected", include_in_schema=False)
 async def protected_test_route(current_user: CurrentUser) -> dict[str, int]:
     return {"id": current_user.id}

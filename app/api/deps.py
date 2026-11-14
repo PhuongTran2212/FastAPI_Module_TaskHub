@@ -26,6 +26,7 @@ from app.repositories.workspace_repository import (
 )
 from app.services.access_service import AccessService
 from app.services.auth_service import AuthService
+from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 from app.services.user_service import UserService
 from app.services.workspace_service import WorkspaceService
@@ -117,10 +118,19 @@ def get_workspace_service(
     return WorkspaceService(workspaces, members, users, tasks, access)
 
 
+def get_project_service(
+    projects: ProjectRepoDep,
+    workspaces: WorkspaceRepoDep,
+    access: AccessServiceDep,
+) -> ProjectService:
+    return ProjectService(projects, workspaces, access)
+
+
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
 WorkspaceServiceDep = Annotated[WorkspaceService, Depends(get_workspace_service)]
+ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
 
 
 # ---------- Auth ----------

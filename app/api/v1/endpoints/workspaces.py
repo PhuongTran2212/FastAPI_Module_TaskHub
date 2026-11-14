@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Response, status
 
-from app.api.deps import CurrentUser, WorkspaceServiceDep
+from app.api.deps import CurrentUser, ProjectServiceDep, WorkspaceServiceDep
 from app.api.pagination import PaginationDep
 from app.api.responses import (
     AUTH_RESPONSES,
@@ -10,6 +10,8 @@ from app.api.responses import (
     not_found_response,
 )
 from app.core import messages
+from app.core.enums import ProjectStatus
+from app.schemas.project import ProjectCreate, ProjectPage, ProjectRead
 from app.schemas.workspace import (
     MemberCreate,
     MemberRead,
@@ -177,3 +179,42 @@ async def remove_member(
 ) -> Response:
     await service.remove_member(current_user, workspace_id, user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------- Projects ----------
+@router.post(
+    "/{workspace_id}/projects",
+    response_model=ProjectRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a project in a workspace (EDITOR)",
+    responses=WORKSPACE_RESPONSES,
+)
+async def create_project(
+    workspace_id: int,
+    data: ProjectCreate,
+    current_user: CurrentUser,
+    service: ProjectServiceDep,
+) -> ProjectRead:
+    return await service.create(current_user, workspace_id, data)
+
+
+@router.get(
+    "/{workspace_id}/projects",
+    response_model=ProjectPage,
+    summary="List projects of a workspace (any member)",
+    responses=WORKSPACE_RESPONSES,
+)
+async def list_projects(
+    workspace_id: int,
+    current_user: CurrentUser,
+    service: ProjectServiceDep,
+    pagination: PaginationDep,
+    status: ProjectStatus | None = None,
+) -> ProjectPage:
+    return await service.list_for_workspace(
+        current_user,
+        workspace_id,
+        page=pagination.page,
+        limit=pagination.limit,
+        status=status,
+    )
