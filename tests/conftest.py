@@ -1,4 +1,5 @@
 import os
+import secrets
 import subprocess
 import sys
 from collections.abc import AsyncIterator, Callable
@@ -56,7 +57,10 @@ def load_test_database_url() -> str:
 TEST_DATABASE_URL = load_test_database_url()
 # Configure before importing the app so its lifespan uses the test DB too.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["JWT_SECRET_KEY"] = secrets.token_hex(32)
 
+from app.api.deps import CurrentUser  # noqa: E402
+from app.core.security import create_access_token  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Project, User, Workspace  # noqa: E402
@@ -157,8 +161,17 @@ async def client(session_factory, seed_data) -> AsyncIterator[AsyncClient]:
             async with AsyncClient(
                 transport=ASGITransport(app),
                 base_url="http://testserver",
+                headers={
+                    "Authorization": "Bearer "
+                    + create_access_token(seed_data["creator_id"])
+                },
             ) as test_client:
                 yield test_client
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous_overrides)
+
+
+@app.get("/__test__/protected", include_in_schema=False)
+async def protected_test_route(current_user: CurrentUser) -> dict[str, int]:
+    return {"id": current_user.id}
