@@ -8,7 +8,6 @@ from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.error import ErrorResponse
 from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
 
-
 router = APIRouter()
 
 VALIDATION_RESPONSES = {

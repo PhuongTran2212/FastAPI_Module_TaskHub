@@ -45,7 +45,9 @@ def load_test_database_url() -> str:
     if application_value:
         application_url = make_url(application_value)
         if (test_url.host, test_url.port or 5432, test_url.database) == (
-            application_url.host, application_url.port or 5432, application_url.database
+            application_url.host,
+            application_url.port or 5432,
+            application_url.database,
         ):
             raise pytest.UsageError("The test and application databases must differ.")
     return value
@@ -114,10 +116,16 @@ def session_factory(db_connection) -> async_sessionmaker[AsyncSession]:
 async def seed_data(session_factory) -> dict[str, int]:
     async with session_factory() as session:
         async with session.begin():
-            creator = User(email="creator@example.test", full_name="Creator",
-                hashed_password="TEST_LOGIN_DISABLED")
-            assignee = User(email="assignee@example.test", full_name="Assignee",
-                hashed_password="TEST_LOGIN_DISABLED")
+            creator = User(
+                email="creator@example.test",
+                full_name="Creator",
+                hashed_password="TEST_LOGIN_DISABLED",
+            )
+            assignee = User(
+                email="assignee@example.test",
+                full_name="Assignee",
+                hashed_password="TEST_LOGIN_DISABLED",
+            )
             session.add_all([creator, assignee])
             await session.flush()
             workspace = Workspace(name="Test workspace", owner_id=creator.id)
@@ -128,8 +136,10 @@ async def seed_data(session_factory) -> dict[str, int]:
             session.add_all([project, other_project])
             await session.flush()
             return {
-                "creator_id": creator.id, "assignee_id": assignee.id,
-                "workspace_id": workspace.id, "project_id": project.id,
+                "creator_id": creator.id,
+                "assignee_id": assignee.id,
+                "workspace_id": workspace.id,
+                "project_id": project.id,
                 "other_project_id": other_project.id,
             }
 
@@ -145,7 +155,8 @@ async def client(session_factory, seed_data) -> AsyncIterator[AsyncClient]:
     try:
         async with app.router.lifespan_context(app):
             async with AsyncClient(
-                transport=ASGITransport(app), base_url="http://testserver",
+                transport=ASGITransport(app),
+                base_url="http://testserver",
             ) as test_client:
                 yield test_client
     finally:

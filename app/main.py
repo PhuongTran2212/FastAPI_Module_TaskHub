@@ -10,7 +10,6 @@ from app.api.v1.router import api_router
 from app.core.exceptions import AppException
 from app.db.session import engine
 
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",

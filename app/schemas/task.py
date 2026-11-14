@@ -30,7 +30,6 @@ class TaskCreate(TaskBase):
 
     project_id: int = Field(gt=0)
 
-
     @field_validator("due_date")
     @classmethod
     def check_due_date(cls, value: date | None) -> date | None:
