@@ -22,7 +22,8 @@ INVALID_TOKEN_SUBJECT = "Invalid token subject"
 INVALID_TOKEN_ID = "Invalid token identifier"
 
 MEMBER_ALREADY_EXISTS = "User is already a member of this workspace"
-PROJECT_ARCHIVED = "Project is archived; its tasks are read-only"
+PROJECT_ARCHIVED = "Project is archived; its content is read-only"
+LABEL_NAME_EXISTS = "A label with this name already exists in the project"
 ASSIGNEE_NOT_ALLOWED = (
     "Assignee must be an OWNER or EDITOR member of the task's workspace"
 )

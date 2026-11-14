@@ -16,6 +16,7 @@ from app.core.exceptions import (
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models import User
+from app.repositories.label_repository import LabelRepository
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.task_repository import TaskRepository
@@ -26,6 +27,7 @@ from app.repositories.workspace_repository import (
 )
 from app.services.access_service import AccessService
 from app.services.auth_service import AuthService
+from app.services.label_service import LabelService
 from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 from app.services.user_service import UserService
@@ -54,6 +56,10 @@ def get_project_repository(session: SessionDep) -> ProjectRepository:
     return ProjectRepository(session)
 
 
+def get_label_repository(session: SessionDep) -> LabelRepository:
+    return LabelRepository(session)
+
+
 def get_workspace_repository(session: SessionDep) -> WorkspaceRepository:
     return WorkspaceRepository(session)
 
@@ -72,6 +78,7 @@ RefreshTokenRepoDep = Annotated[
 TaskRepoDep = Annotated[TaskRepository, Depends(get_task_repository)]
 ProjectRepoDep = Annotated[ProjectRepository, Depends(get_project_repository)]
 WorkspaceRepoDep = Annotated[WorkspaceRepository, Depends(get_workspace_repository)]
+LabelRepoDep = Annotated[LabelRepository, Depends(get_label_repository)]
 WorkspaceMemberRepoDep = Annotated[
     WorkspaceMemberRepository,
     Depends(get_workspace_member_repository),
@@ -130,11 +137,19 @@ def get_project_service(
     return ProjectService(projects, access)
 
 
+def get_label_service(
+    labels: LabelRepoDep,
+    access: AccessServiceDep,
+) -> LabelService:
+    return LabelService(labels, access)
+
+
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
 WorkspaceServiceDep = Annotated[WorkspaceService, Depends(get_workspace_service)]
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+LabelServiceDep = Annotated[LabelService, Depends(get_label_service)]
 
 
 # ---------- Auth ----------

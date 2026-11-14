@@ -2,7 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
 
-from app.api.deps import CurrentUser, ProjectServiceDep, TaskServiceDep
+from app.api.deps import (
+    CurrentUser,
+    LabelServiceDep,
+    ProjectServiceDep,
+    TaskServiceDep,
+)
 from app.api.pagination import PaginationDep
 from app.api.responses import (
     AUTH_RESPONSES,
@@ -12,6 +17,7 @@ from app.api.responses import (
 )
 from app.core import messages
 from app.core.enums import TaskPriority, TaskStatus
+from app.schemas.label import LabelCreate, LabelRead
 from app.schemas.project import ProjectRead, ProjectUpdate
 from app.schemas.task import TaskCreate, TaskPage, TaskRead
 
@@ -121,3 +127,39 @@ async def create_task(
     service: TaskServiceDep,
 ) -> TaskRead:
     return await service.create_task(current_user, project_id, data)
+
+
+# ---------- Labels of a project ----------
+@router.get(
+    "/{project_id}/labels",
+    response_model=list[LabelRead],
+    summary="List labels of a project (any member)",
+    responses=PROJECT_RESPONSES,
+)
+async def list_labels(
+    project_id: int,
+    current_user: CurrentUser,
+    service: LabelServiceDep,
+) -> list[LabelRead]:
+    return await service.list_for_project(current_user, project_id)
+
+
+@router.post(
+    "/{project_id}/labels",
+    response_model=LabelRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a label in a project (EDITOR)",
+    responses={
+        **PROJECT_RESPONSES,
+        **conflict_response(
+            f"{messages.LABEL_NAME_EXISTS} / {messages.PROJECT_ARCHIVED}"
+        ),
+    },
+)
+async def create_label(
+    project_id: int,
+    data: LabelCreate,
+    current_user: CurrentUser,
+    service: LabelServiceDep,
+) -> LabelRead:
+    return await service.create(current_user, project_id, data)
