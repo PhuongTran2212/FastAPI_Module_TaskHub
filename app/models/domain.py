@@ -1,5 +1,14 @@
 from datetime import date, datetime
-from app.core.constants import TASK_TITLE_MAX_LENGTH
+from app.core.constants import (
+    EMAIL_MAX_LENGTH,
+    LABEL_COLOR_MAX_LENGTH,
+    LABEL_NAME_MAX_LENGTH,
+    PASSWORD_HASH_MAX_LENGTH,
+    PROJECT_NAME_MAX_LENGTH,
+    TASK_TITLE_MAX_LENGTH,
+    USER_FULL_NAME_MAX_LENGTH,
+    WORKSPACE_NAME_MAX_LENGTH,
+)
 from sqlalchemy import (
     Boolean,
     Column,
@@ -56,11 +65,11 @@ class User(TimestampMixin, Base):
         primary_key=True,
     )
     email: Mapped[str] = mapped_column(
-        String(255),
+        String(EMAIL_MAX_LENGTH),
         unique=True,
     )
-    full_name: Mapped[str] = mapped_column(String(255))
-    hashed_password: Mapped[str] = mapped_column(String(255))
+    full_name: Mapped[str] = mapped_column(String(USER_FULL_NAME_MAX_LENGTH))
+    hashed_password: Mapped[str] = mapped_column(String(PASSWORD_HASH_MAX_LENGTH))
 
     role: Mapped[UserRole] = mapped_column(
         Enum(
@@ -84,7 +93,7 @@ class Workspace(TimestampMixin, Base):
     __tablename__ = "workspaces"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(WORKSPACE_NAME_MAX_LENGTH))
     owner_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"),
         index=True,
@@ -144,7 +153,7 @@ class Project(TimestampMixin, Base):
         index=True,
     )
 
-    name: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(PROJECT_NAME_MAX_LENGTH))
     description: Mapped[str | None] = mapped_column(Text)
 
     status: Mapped[ProjectStatus] = mapped_column(
@@ -270,10 +279,10 @@ class Label(Base):
         index=True,
     )
 
-    name: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(LABEL_NAME_MAX_LENGTH))
 
     color: Mapped[str] = mapped_column(
-        String(7),
+        String(LABEL_COLOR_MAX_LENGTH),
         default="#808080",
         server_default="#808080",
     )
