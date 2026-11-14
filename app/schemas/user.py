@@ -101,3 +101,10 @@ class ChangePasswordRequest(BaseSchema):
         if self.new_password == self.current_password:
             raise ValueError(messages.PASSWORD_MUST_DIFFER)
         return self
+
+
+class UserPage(BaseSchema):
+    items: list[UserRead]
+    total: int
+    page: int
+    limit: int

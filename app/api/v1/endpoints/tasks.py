@@ -3,31 +3,33 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import CurrentUser, TaskServiceDep
-from app.core.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
+from app.api.pagination import PaginationDep
+from app.api.responses import AUTH_RESPONSES, VALIDATION_RESPONSES
+from app.core import messages
 from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.error import ErrorResponse
 from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
 
 router = APIRouter()
 
-VALIDATION_RESPONSES = {
-    422: {
-        "description": "Invalid request data or task reference",
-    },
+# Mọi route /tasks yêu cầu đăng nhập (xem api/v1/router.py) → luôn có 401/403
+LIST_RESPONSES = {
+    **VALIDATION_RESPONSES,
+    **AUTH_RESPONSES,
 }
 
 TASK_RESPONSES = {
-    **VALIDATION_RESPONSES,
-    404: {
+    **LIST_RESPONSES,
+    status.HTTP_404_NOT_FOUND: {
         "model": ErrorResponse,
-        "description": "Task not found",
+        "description": messages.RESOURCE_NOT_FOUND.format(resource="Task"),
     },
 }
 
 CONFLICT_RESPONSES = {
-    409: {
+    status.HTTP_409_CONFLICT: {
         "model": ErrorResponse,
-        "description": "Task data conflicts with database constraints",
+        "description": messages.TASK_CONFLICT,
     },
 }
 
@@ -36,23 +38,19 @@ CONFLICT_RESPONSES = {
     "",
     response_model=TaskPage,
     summary="List tasks",
-    responses=VALIDATION_RESPONSES,
+    responses=LIST_RESPONSES,
 )
 async def list_tasks(
     service: TaskServiceDep,
-    page: Annotated[int, Query(ge=1)] = 1,
-    limit: Annotated[
-        int,
-        Query(ge=1, le=MAX_PAGE_LIMIT),
-    ] = DEFAULT_PAGE_LIMIT,
+    pagination: PaginationDep,
     project_id: Annotated[int | None, Query(gt=0)] = None,
     status: TaskStatus | None = None,
     priority: TaskPriority | None = None,
     assignee_id: Annotated[int | None, Query(gt=0)] = None,
 ) -> TaskPage:
     return await service.list_tasks(
-        page=page,
-        limit=limit,
+        page=pagination.page,
+        limit=pagination.limit,
         project_id=project_id,
         status=status,
         priority=priority,
@@ -66,7 +64,7 @@ async def list_tasks(
     status_code=status.HTTP_201_CREATED,
     summary="Create a task",
     responses={
-        **VALIDATION_RESPONSES,
+        **LIST_RESPONSES,
         **CONFLICT_RESPONSES,
     },
 )

@@ -6,7 +6,7 @@ from app.core.security import hash_password, verify_password
 from app.models import User
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.user import ChangePasswordRequest, UserRead, UserUpdate
+from app.schemas.user import ChangePasswordRequest, UserPage, UserRead, UserUpdate
 
 
 class UserService:
@@ -19,9 +19,14 @@ class UserService:
         self.refresh_tokens = refresh_tokens
         self.session = users.session
 
-    async def list_users(self, page: int, limit: int) -> list[UserRead]:
+    async def list_users(self, page: int, limit: int) -> UserPage:
         users = await self.users.list(offset=(page - 1) * limit, limit=limit)
-        return [UserRead.model_validate(user) for user in users]
+        return UserPage(
+            items=[UserRead.model_validate(user) for user in users],
+            total=await self.users.count(),
+            page=page,
+            limit=limit,
+        )
 
     async def update_profile(self, user: User, data: UserUpdate) -> UserRead:
         async with self.session.begin():

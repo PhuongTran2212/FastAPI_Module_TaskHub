@@ -1,5 +1,5 @@
 # app/repositories/user_repository.py
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
@@ -13,3 +13,7 @@ class UserRepository(BaseRepository[User]):
     async def get_by_email(self, email: str) -> User | None:
         stmt = select(User).where(User.email == email)
         return await self.session.scalar(stmt)
+
+    async def count(self) -> int:
+        stmt = select(func.count()).select_from(User)
+        return (await self.session.scalar(stmt)) or 0
