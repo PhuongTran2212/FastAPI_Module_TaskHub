@@ -22,6 +22,13 @@ INVALID_TOKEN_SUBJECT = "Invalid token subject"
 INVALID_TOKEN_ID = "Invalid token identifier"
 
 MEMBER_ALREADY_EXISTS = "User is already a member of this workspace"
+PROJECT_ARCHIVED = "Project is archived; its tasks are read-only"
+ASSIGNEE_NOT_ALLOWED = (
+    "Assignee must be an OWNER or EDITOR member of the task's workspace"
+)
+TASK_DELETE_NOT_ALLOWED = (
+    "Only the task creator or the workspace owner can delete this task"
+)
 OWNER_MEMBERSHIP_LOCKED = (
     "The workspace owner cannot be removed or have their role changed"
 )

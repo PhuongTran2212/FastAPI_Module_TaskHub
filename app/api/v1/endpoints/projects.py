@@ -1,12 +1,19 @@
-from fastapi import APIRouter, Response, status
+from typing import Annotated
 
-from app.api.deps import CurrentUser, ProjectServiceDep
+from fastapi import APIRouter, Query, Response, status
+
+from app.api.deps import CurrentUser, ProjectServiceDep, TaskServiceDep
+from app.api.pagination import PaginationDep
 from app.api.responses import (
     AUTH_RESPONSES,
     VALIDATION_RESPONSES,
+    conflict_response,
     not_found_response,
 )
+from app.core import messages
+from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.project import ProjectRead, ProjectUpdate
+from app.schemas.task import TaskCreate, TaskPage, TaskRead
 
 router = APIRouter()
 
@@ -64,3 +71,53 @@ async def delete_project(
 ) -> Response:
     await service.delete(current_user, project_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------- Tasks of a project ----------
+@router.get(
+    "/{project_id}/tasks",
+    response_model=TaskPage,
+    summary="List tasks of a project with filters (any member)",
+    responses=PROJECT_RESPONSES,
+)
+async def list_project_tasks(
+    project_id: int,
+    current_user: CurrentUser,
+    service: TaskServiceDep,
+    pagination: PaginationDep,
+    status: TaskStatus | None = None,
+    priority: TaskPriority | None = None,
+    assignee_id: Annotated[int | None, Query(gt=0)] = None,
+) -> TaskPage:
+    return await service.list_tasks(
+        current_user,
+        project_id,
+        page=pagination.page,
+        limit=pagination.limit,
+        status=status,
+        priority=priority,
+        assignee_id=assignee_id,
+    )
+
+
+@router.post(
+    "/{project_id}/tasks",
+    response_model=TaskRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a task in a project (EDITOR)",
+    description=(
+        "The task starts as TODO and `created_by` is the current user. "
+        "`assignee_id` must be an OWNER or EDITOR member of the workspace."
+    ),
+    responses={
+        **PROJECT_RESPONSES,
+        **conflict_response(f"{messages.PROJECT_ARCHIVED} / {messages.TASK_CONFLICT}"),
+    },
+)
+async def create_task(
+    project_id: int,
+    data: TaskCreate,
+    current_user: CurrentUser,
+    service: TaskServiceDep,
+) -> TaskRead:
+    return await service.create_task(current_user, project_id, data)

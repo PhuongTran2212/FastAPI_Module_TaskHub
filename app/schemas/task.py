@@ -28,9 +28,8 @@ class TaskBase(BaseSchema):
 
 
 class TaskCreate(TaskBase):
+    # project_id lấy từ path /projects/{project_id}/tasks
     model_config = ConfigDict(extra="forbid")
-
-    project_id: int = Field(gt=0)
 
     @field_validator("due_date")
     @classmethod

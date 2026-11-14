@@ -103,9 +103,10 @@ def get_user_service(
 def get_task_service(
     repo: TaskRepoDep,
     projects: ProjectRepoDep,
-    users: UserRepoDep,
+    members: WorkspaceMemberRepoDep,
+    access: AccessServiceDep,
 ) -> TaskService:
-    return TaskService(repo=repo, projects=projects, users=users)
+    return TaskService(repo, projects, members, access)
 
 
 def get_workspace_service(
