@@ -2,4 +2,12 @@ __pycache__/
 *.pyc
 venv/
 .env
+.env.*
+!.env.example
+!.env.test.example
+.pytest_cache/
+pytest-cache-files-*/
 .vscode/
+
+.worktrees/
+.ruff_cache/
