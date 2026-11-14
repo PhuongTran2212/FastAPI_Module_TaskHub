@@ -3,10 +3,18 @@ import asyncio
 
 from sqlalchemy.exc import IntegrityError
 
+from app.core import messages
 from app.core.config import get_settings
+from app.core.enums import TokenType
+from app.core.exceptions import (
+    EmailAlreadyRegistered,
+    InactiveUser,
+    InvalidCredentials,
+    InvalidRefreshToken,
+    TokenError,
+)
 from app.core.security import (
     DUMMY_PASSWORD_HASH,
-    TokenError,
     TokenPayload,
     create_access_token,
     create_refresh_token,
@@ -19,21 +27,12 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserRead
 
-
-class EmailAlreadyRegistered(Exception):
-    pass
+USERS_EMAIL_CONSTRAINT = "uq_users_email"
 
 
-class InvalidCredentials(Exception):
-    pass
-
-
-class InactiveUser(Exception):
-    pass
-
-
-class InvalidRefreshToken(Exception):
-    pass
+def _constraint_name(exc: IntegrityError) -> str | None:
+    # asyncpg gắn tên constraint vào exception gốc (__cause__ của exc.orig)
+    return getattr(getattr(exc.orig, "__cause__", None), "constraint_name", None)
 
 
 class AuthService:
@@ -53,7 +52,7 @@ class AuthService:
 
         async with self.session.begin():
             if await self.users.get_by_email(data.email) is not None:
-                raise EmailAlreadyRegistered("Email already registered")
+                raise EmailAlreadyRegistered()
 
             try:
                 user = await self.users.create(
@@ -65,8 +64,11 @@ class AuthService:
                     }
                 )
             except IntegrityError as exc:
-                # 2 request đăng ký cùng email cùng lúc → unique constraint chặn
-                raise EmailAlreadyRegistered("Email already registered") from exc
+                # 2 request đăng ký cùng email cùng lúc → unique constraint chặn.
+                # Chỉ map đúng constraint email, lỗi DB khác vẫn để nổi lên.
+                if _constraint_name(exc) != USERS_EMAIL_CONSTRAINT:
+                    raise
+                raise EmailAlreadyRegistered() from exc
 
             return UserRead.model_validate(user)
 
@@ -85,10 +87,10 @@ class AuthService:
 
         # Cùng một thông báo cho "sai email" và "sai mật khẩu"
         if user is None or not password_ok:
-            raise InvalidCredentials("Incorrect email or password")
+            raise InvalidCredentials()
 
         if not user.is_active:
-            raise InactiveUser("User account is disabled")
+            raise InactiveUser()
 
         async with self.session.begin():
             return await self._issue_tokens(user.id)
@@ -102,22 +104,23 @@ class AuthService:
                 for_update=True,
             )
             if stored is None or stored.user_id != payload.user_id:
-                raise InvalidRefreshToken("Invalid refresh token")
+                raise InvalidRefreshToken()
 
             if stored.revoked_at is None:
                 user = await self.users.get(stored.user_id)
                 if user is None or not user.is_active:
-                    raise InvalidRefreshToken("Invalid refresh token")
+                    raise InvalidRefreshToken()
 
                 # Rotation: token cũ bị thu hồi, cấp cặp token mới
                 await self.refresh_tokens.revoke(stored)
                 return await self._issue_tokens(user.id)
 
             # Token đã thu hồi mà vẫn bị dùng lại → có thể đã bị đánh cắp.
-            # Thu hồi mọi phiên của user (commit khi thoát block).
+            # Thu hồi mọi phiên của user. Raise SAU khi thoát block để việc
+            # thu hồi được commit (raise bên trong sẽ rollback).
             await self.refresh_tokens.revoke_all_for_user(stored.user_id)
 
-        raise InvalidRefreshToken("Refresh token has been revoked")
+        raise InvalidRefreshToken(messages.REFRESH_TOKEN_REVOKED)
 
     async def logout(self, refresh_token: str) -> None:
         payload = self._decode_refresh_token(refresh_token)
@@ -154,6 +157,6 @@ class AuthService:
     @staticmethod
     def _decode_refresh_token(token: str) -> TokenPayload:
         try:
-            return decode_token(token, "refresh")
+            return decode_token(token, TokenType.REFRESH)
         except TokenError as exc:
-            raise InvalidRefreshToken("Invalid refresh token") from exc
+            raise InvalidRefreshToken() from exc

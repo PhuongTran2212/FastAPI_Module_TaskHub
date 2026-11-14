@@ -2,12 +2,18 @@
 from collections.abc import Awaitable, Callable
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import UserRole
-from app.core.security import TokenError, decode_token
+from app.core.enums import TokenType, UserRole
+from app.core.exceptions import (
+    ForbiddenException,
+    InactiveUser,
+    TokenError,
+    UnauthorizedException,
+)
+from app.core.security import decode_token
 from app.db.session import get_db
 from app.models import User
 from app.repositories.project_repository import ProjectRepository
@@ -86,32 +92,23 @@ async def get_current_user(
         Depends(bearer_scheme),
     ],
 ) -> User:
-    credentials_error = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
     if credentials is None:
-        raise credentials_error
+        raise UnauthorizedException()
 
     try:
-        payload = decode_token(credentials.credentials, "access")
+        payload = decode_token(credentials.credentials, TokenType.ACCESS)
     except TokenError as exc:
-        raise credentials_error from exc
+        raise UnauthorizedException() from exc
 
     # Đóng transaction ngay sau khi đọc → service phía sau mở begin() được
     async with users.session.begin():
         user = await users.get(payload.user_id)
 
     if user is None:
-        raise credentials_error
+        raise UnauthorizedException()
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is disabled",
-        )
+        raise InactiveUser()
 
     return user
 
@@ -122,10 +119,7 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 def require_roles(*roles: UserRole) -> Callable[[User], Awaitable[User]]:
     async def role_checker(current_user: CurrentUser) -> User:
         if current_user.role not in roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions",
-            )
+            raise ForbiddenException()
         return current_user
 
     return role_checker

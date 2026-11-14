@@ -1,0 +1,16 @@
+RESOURCE_NOT_FOUND = "{resource} not found"
+TASK_CONFLICT = "Task data conflicts with database constraints"
+
+EMAIL_ALREADY_REGISTERED = "Email already registered"
+INVALID_CREDENTIALS = "Incorrect email or password"
+ACCOUNT_DISABLED = "User account is disabled"
+AUTHENTICATION_REQUIRED = "Could not validate credentials"
+PERMISSION_DENIED = "Not enough permissions"
+INCORRECT_CURRENT_PASSWORD = "Current password is incorrect"
+
+INVALID_REFRESH_TOKEN = "Invalid refresh token"
+REFRESH_TOKEN_REVOKED = "Refresh token has been revoked"
+INVALID_TOKEN = "Invalid or expired token"
+INVALID_TOKEN_TYPE = "Invalid token type"
+INVALID_TOKEN_SUBJECT = "Invalid token subject"
+INVALID_TOKEN_ID = "Invalid token identifier"

@@ -2,18 +2,14 @@
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal
 
 import bcrypt
 import jwt
 
+from app.core import messages
 from app.core.config import get_settings
-
-TokenType = Literal["access", "refresh"]
-
-
-class TokenError(Exception):
-    pass
+from app.core.enums import TokenType
+from app.core.exceptions import TokenError
 
 
 @dataclass(frozen=True)
@@ -54,7 +50,7 @@ def _create_token(
 
     payload = {
         "sub": str(user_id),  # PyJWT >= 2.10 bắt buộc sub là string
-        "type": token_type,
+        "type": token_type.value,
         "jti": jti,
         "iat": now,
         "exp": expires_at,
@@ -69,13 +65,13 @@ def _create_token(
 
 def create_access_token(user_id: int) -> str:
     minutes = get_settings().access_token_expire_minutes
-    token, _, _ = _create_token(user_id, "access", timedelta(minutes=minutes))
+    token, _, _ = _create_token(user_id, TokenType.ACCESS, timedelta(minutes=minutes))
     return token
 
 
 def create_refresh_token(user_id: int) -> tuple[str, str, datetime]:
     days = get_settings().refresh_token_expire_days
-    return _create_token(user_id, "refresh", timedelta(days=days))
+    return _create_token(user_id, TokenType.REFRESH, timedelta(days=days))
 
 
 def decode_token(token: str, expected_type: TokenType) -> TokenPayload:
@@ -89,14 +85,20 @@ def decode_token(token: str, expected_type: TokenType) -> TokenPayload:
             options={"require": ["sub", "jti", "exp", "iat"]},
         )
     except jwt.InvalidTokenError as exc:
-        raise TokenError("Invalid or expired token") from exc
+        raise TokenError(messages.INVALID_TOKEN) from exc
 
-    if payload.get("type") != expected_type:
-        raise TokenError("Invalid token type")
+    if payload.get("type") != expected_type.value:
+        raise TokenError(messages.INVALID_TOKEN_TYPE)
 
     try:
         user_id = int(payload["sub"])
     except (TypeError, ValueError) as exc:
-        raise TokenError("Invalid token subject") from exc
+        raise TokenError(messages.INVALID_TOKEN_SUBJECT) from exc
+    if user_id <= 0:
+        raise TokenError(messages.INVALID_TOKEN_SUBJECT)
 
-    return TokenPayload(user_id=user_id, jti=str(payload["jti"]))
+    jti = payload["jti"]
+    if not isinstance(jti, str) or not jti:
+        raise TokenError(messages.INVALID_TOKEN_ID)
+
+    return TokenPayload(user_id=user_id, jti=jti)

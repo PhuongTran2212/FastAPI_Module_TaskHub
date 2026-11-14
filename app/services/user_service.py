@@ -1,15 +1,12 @@
 # app/services/user_service.py
 import asyncio
 
+from app.core.exceptions import IncorrectPassword
 from app.core.security import hash_password, verify_password
 from app.models import User
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import ChangePasswordRequest, UserRead, UserUpdate
-
-
-class IncorrectPassword(Exception):
-    pass
 
 
 class UserService:
@@ -45,7 +42,7 @@ class UserService:
             user.hashed_password,
         )
         if not password_ok:
-            raise IncorrectPassword("Current password is incorrect")
+            raise IncorrectPassword()
 
         new_hash = await asyncio.to_thread(hash_password, data.new_password)
 

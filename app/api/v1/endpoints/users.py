@@ -1,9 +1,8 @@
 # app/api/v1/endpoints/users.py
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.api.deps import CurrentUser, UserServiceDep, require_admin
 from app.schemas.user import ChangePasswordRequest, UserRead, UserUpdate
-from app.services.user_service import IncorrectPassword
 
 router = APIRouter()
 
@@ -28,11 +27,7 @@ async def change_password(
     current_user: CurrentUser,
     service: UserServiceDep,
 ):
-    try:
-        await service.change_password(current_user, data)
-    except IncorrectPassword as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
+    await service.change_password(current_user, data)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
