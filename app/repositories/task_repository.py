@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import TaskPriority, TaskStatus
@@ -31,19 +31,5 @@ class TaskRepository(BaseRepository[Task]):
             if value is not None:
                 filters.append(column == value)
 
-        stmt = (
-            select(Task)
-            .where(*filters)
-            .order_by(Task.id)
-            .offset((page - 1) * limit)
-            .limit(limit)
-        )
-
-        result = await self.session.scalars(stmt)
-        items = list(result.all())
-
-        count_stmt = select(func.count()).select_from(Task).where(*filters)
-
-        total = (await self.session.scalar(count_stmt)) or 0
-
-        return items, total
+        stmt = select(Task).where(*filters).order_by(Task.id)
+        return await self.paginate(stmt, page=page, limit=limit)

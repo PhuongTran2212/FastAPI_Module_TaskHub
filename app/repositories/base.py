@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from typing import Any, Generic, TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import DEFAULT_PAGE_LIMIT
@@ -32,6 +34,30 @@ class BaseRepository(Generic[T]):
 
         result = await self.session.scalars(stmt)
         return list(result.all())
+
+    async def count(self, *filters: ColumnElement[bool]) -> int:
+        stmt = select(func.count()).select_from(self.model).where(*filters)
+        return (await self.session.scalar(stmt)) or 0
+
+    async def paginate(
+        self,
+        stmt: Select[tuple[T]],
+        *,
+        page: int,
+        limit: int,
+    ) -> tuple[list[T], int]:
+        """Trả về (items của trang, tổng số dòng khớp điều kiện của stmt)."""
+        count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
+        total = (await self.session.scalar(count_stmt)) or 0
+
+        result = await self.session.scalars(
+            stmt.offset((page - 1) * limit).limit(limit)
+        )
+        return list(result.all()), total
+
+    async def list_page(self, *, page: int, limit: int) -> tuple[list[T], int]:
+        stmt = select(self.model).order_by(*self.model.__table__.primary_key.columns)
+        return await self.paginate(stmt, page=page, limit=limit)
 
     async def create(self, values: dict[str, Any]) -> T:
         item = self.model(**values)

@@ -6,6 +6,7 @@ from app.core import messages
 from app.core.constants import MIN_TEXT_LENGTH, TASK_TITLE_MAX_LENGTH
 from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.base import BaseSchema
+from app.schemas.pagination import Page
 
 
 def validate_due_date(value: date | None) -> date | None:
@@ -75,8 +76,5 @@ class TaskRead(TaskBase):
     created_at: datetime
 
 
-class TaskPage(BaseSchema):
-    items: list[TaskRead]
-    total: int
-    page: int
-    limit: int
+class TaskPage(Page[TaskRead]):
+    pass
