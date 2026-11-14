@@ -1,11 +1,12 @@
 from datetime import date, datetime
+from typing import Annotated
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import AfterValidator, ConfigDict, Field, field_validator
 
 from app.core import messages
 from app.core.constants import MIN_TEXT_LENGTH, TASK_TITLE_MAX_LENGTH
 from app.core.enums import TaskPriority, TaskStatus
-from app.schemas.base import BaseSchema
+from app.schemas.base import BaseSchema, reject_null
 from app.schemas.pagination import Page
 
 
@@ -40,24 +41,16 @@ class TaskCreate(TaskBase):
 class TaskUpdate(BaseSchema):
     model_config = ConfigDict(extra="forbid")
 
-    title: str | None = Field(
+    title: Annotated[str | None, AfterValidator(reject_null)] = Field(
         default=None,
         min_length=MIN_TEXT_LENGTH,
         max_length=TASK_TITLE_MAX_LENGTH,
     )
     description: str | None = None
-    status: TaskStatus | None = None
-    priority: TaskPriority | None = None
+    status: Annotated[TaskStatus | None, AfterValidator(reject_null)] = None
+    priority: Annotated[TaskPriority | None, AfterValidator(reject_null)] = None
     due_date: date | None = None
     assignee_id: int | None = Field(default=None, gt=0)
-
-    @field_validator("title", "status", "priority")
-    @classmethod
-    def reject_null(cls, value: object) -> object:
-        if value is None:
-            raise ValueError(messages.FIELD_CANNOT_BE_NULL)
-
-        return value
 
     @field_validator("due_date")
     @classmethod
