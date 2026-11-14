@@ -79,8 +79,13 @@ WorkspaceMemberRepoDep = Annotated[
 
 
 # ---------- Services ----------
-def get_access_service(members: WorkspaceMemberRepoDep) -> AccessService:
-    return AccessService(members)
+def get_access_service(
+    members: WorkspaceMemberRepoDep,
+    workspaces: WorkspaceRepoDep,
+    projects: ProjectRepoDep,
+    tasks: TaskRepoDep,
+) -> AccessService:
+    return AccessService(members, workspaces, projects, tasks)
 
 
 AccessServiceDep = Annotated[AccessService, Depends(get_access_service)]
@@ -102,11 +107,10 @@ def get_user_service(
 
 def get_task_service(
     repo: TaskRepoDep,
-    projects: ProjectRepoDep,
     members: WorkspaceMemberRepoDep,
     access: AccessServiceDep,
 ) -> TaskService:
-    return TaskService(repo, projects, members, access)
+    return TaskService(repo, members, access)
 
 
 def get_workspace_service(
@@ -121,10 +125,9 @@ def get_workspace_service(
 
 def get_project_service(
     projects: ProjectRepoDep,
-    workspaces: WorkspaceRepoDep,
     access: AccessServiceDep,
 ) -> ProjectService:
-    return ProjectService(projects, workspaces, access)
+    return ProjectService(projects, access)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]

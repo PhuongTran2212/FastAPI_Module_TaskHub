@@ -1,13 +1,10 @@
 from app.core import messages
-from app.core.enums import ProjectStatus, TaskPriority, TaskStatus, WorkspaceRole
+from app.core.enums import TaskPriority, TaskStatus, WorkspaceRole
 from app.core.exceptions import (
-    ConflictException,
     ForbiddenException,
-    NotFoundException,
     UnprocessableException,
 )
-from app.models import Project, Task, User
-from app.repositories.project_repository import ProjectRepository
+from app.models import User
 from app.repositories.task_repository import TaskRepository
 from app.repositories.workspace_repository import WorkspaceMemberRepository
 from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
@@ -24,13 +21,11 @@ class TaskService(TransactionalService):
     def __init__(
         self,
         repo: TaskRepository,
-        projects: ProjectRepository,
         members: WorkspaceMemberRepository,
         access: AccessService,
     ) -> None:
         super().__init__(repo.session)
         self.repo = repo
-        self.projects = projects
         self.members = members
         self.access = access
 
@@ -46,7 +41,7 @@ class TaskService(TransactionalService):
         assignee_id: int | None = None,
     ) -> TaskPage:
         async with self.transaction():
-            await self._get_project(user, project_id, WorkspaceRole.VIEWER)
+            await self.access.get_project(user, project_id, WorkspaceRole.VIEWER)
             items, total = await self.repo.list_filtered(
                 project_id=project_id,
                 page=page,
@@ -64,7 +59,7 @@ class TaskService(TransactionalService):
 
     async def get_task(self, user: User, task_id: int) -> TaskRead:
         async with self.transaction():
-            task, _ = await self._get_task(user, task_id, WorkspaceRole.VIEWER)
+            task, _ = await self.access.get_task(user, task_id, WorkspaceRole.VIEWER)
             return TaskRead.model_validate(task)
 
     async def create_task(
@@ -74,8 +69,10 @@ class TaskService(TransactionalService):
         data: TaskCreate,
     ) -> TaskRead:
         async with self.transaction():
-            project = await self._get_project(user, project_id, WorkspaceRole.EDITOR)
-            self._ensure_writable(project)
+            project = await self.access.get_project(
+                user, project_id, WorkspaceRole.EDITOR
+            )
+            self.access.ensure_writable(project)
             if data.assignee_id is not None:
                 await self._ensure_assignable(project.workspace_id, data.assignee_id)
 
@@ -94,8 +91,8 @@ class TaskService(TransactionalService):
         data: TaskUpdate,
     ) -> TaskRead:
         async with self.transaction():
-            task, _ = await self._get_task(user, task_id, WorkspaceRole.EDITOR)
-            self._ensure_writable(task.project)
+            task, _ = await self.access.get_task(user, task_id, WorkspaceRole.EDITOR)
+            self.access.ensure_writable(task.project)
 
             changes = data.model_dump(exclude_unset=True)
             assignee_id = changes.get("assignee_id")
@@ -107,50 +104,18 @@ class TaskService(TransactionalService):
 
     async def delete_task(self, user: User, task_id: int) -> None:
         async with self.transaction():
-            task, role = await self._get_task(user, task_id, WorkspaceRole.EDITOR)
+            task, role = await self.access.get_task(user, task_id, WorkspaceRole.EDITOR)
             # Resource ownership: EDITOR chỉ xóa task do mình tạo,
             # OWNER của workspace (và ADMIN) xóa được mọi task
             if role != WorkspaceRole.OWNER and task.created_by != user.id:
                 raise ForbiddenException(messages.TASK_DELETE_NOT_ALLOWED)
-            self._ensure_writable(task.project)
+            self.access.ensure_writable(task.project)
 
             await self.repo.delete(task)
 
     # ---------- Helpers ----------
-    async def _get_project(
-        self,
-        user: User,
-        project_id: int,
-        minimum: WorkspaceRole,
-    ) -> Project:
-        project = await self.projects.get(project_id)
-        if project is None:
-            raise NotFoundException("Project")
-        await self.access.require_role(
-            user, project.workspace_id, minimum, resource="Project"
-        )
-        return project
-
-    async def _get_task(
-        self,
-        user: User,
-        task_id: int,
-        minimum: WorkspaceRole,
-    ) -> tuple[Task, WorkspaceRole]:
-        task = await self.repo.get_with_project(task_id)
-        if task is None:
-            raise NotFoundException("Task")
-        role = await self.access.require_role(
-            user, task.project.workspace_id, minimum, resource="Task"
-        )
-        return task, role
 
     async def _ensure_assignable(self, workspace_id: int, user_id: int) -> None:
         member = await self.members.get_member(workspace_id, user_id)
         if member is None or member.role not in ASSIGNABLE_ROLES:
             raise UnprocessableException(messages.ASSIGNEE_NOT_ALLOWED)
-
-    @staticmethod
-    def _ensure_writable(project: Project) -> None:
-        if project.status == ProjectStatus.ARCHIVED:
-            raise ConflictException(messages.PROJECT_ARCHIVED)
