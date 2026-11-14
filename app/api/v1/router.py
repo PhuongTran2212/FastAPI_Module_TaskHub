@@ -2,7 +2,15 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
-from app.api.v1.endpoints import auth, labels, projects, tasks, users, workspaces
+from app.api.v1.endpoints import (
+    auth,
+    comments,
+    labels,
+    projects,
+    tasks,
+    users,
+    workspaces,
+)
 
 api_router = APIRouter()
 
@@ -18,6 +26,12 @@ api_router.include_router(
     projects.router,
     prefix="/projects",
     tags=["Projects"],
+    dependencies=[Depends(get_current_user)],
+)
+api_router.include_router(
+    comments.router,
+    prefix="/comments",
+    tags=["Comments"],
     dependencies=[Depends(get_current_user)],
 )
 api_router.include_router(

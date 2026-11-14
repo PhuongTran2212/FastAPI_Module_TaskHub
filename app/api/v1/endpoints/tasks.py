@@ -1,6 +1,12 @@
 from fastapi import APIRouter, Response, status
 
-from app.api.deps import CurrentUser, LabelServiceDep, TaskServiceDep
+from app.api.deps import (
+    CommentServiceDep,
+    CurrentUser,
+    LabelServiceDep,
+    TaskServiceDep,
+)
+from app.api.pagination import PaginationDep
 from app.api.responses import (
     AUTH_RESPONSES,
     VALIDATION_RESPONSES,
@@ -8,6 +14,7 @@ from app.api.responses import (
     not_found_response,
 )
 from app.core import messages
+from app.schemas.comment import CommentCreate, CommentPage, CommentRead
 from app.schemas.label import LabelRead
 from app.schemas.task import TaskRead, TaskUpdate
 
@@ -131,3 +138,37 @@ async def detach_label(
 ) -> Response:
     await service.detach(current_user, task_id, label_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------- Comments of a task ----------
+@router.get(
+    "/{task_id}/comments",
+    response_model=CommentPage,
+    summary="List comments of a task, oldest first (any member)",
+    responses=TASK_RESPONSES,
+)
+async def list_comments(
+    task_id: int,
+    current_user: CurrentUser,
+    service: CommentServiceDep,
+    pagination: PaginationDep,
+) -> CommentPage:
+    return await service.list_for_task(
+        current_user, task_id, page=pagination.page, limit=pagination.limit
+    )
+
+
+@router.post(
+    "/{task_id}/comments",
+    response_model=CommentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a comment to a task (EDITOR)",
+    responses={**TASK_RESPONSES, **conflict_response(messages.PROJECT_ARCHIVED)},
+)
+async def add_comment(
+    task_id: int,
+    data: CommentCreate,
+    current_user: CurrentUser,
+    service: CommentServiceDep,
+) -> CommentRead:
+    return await service.create(current_user, task_id, data)
