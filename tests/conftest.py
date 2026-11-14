@@ -1,8 +1,9 @@
+import itertools
 import os
 import secrets
 import subprocess
 import sys
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
 import pytest
@@ -60,10 +61,11 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["JWT_SECRET_KEY"] = secrets.token_hex(32)
 
 from app.api.deps import CurrentUser  # noqa: E402
+from app.core.enums import UserRole, WorkspaceRole  # noqa: E402
 from app.core.security import create_access_token  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Project, User, Workspace  # noqa: E402
+from app.models import Project, User, Workspace, WorkspaceMember  # noqa: E402
 
 
 def run_alembic(*arguments: str) -> str:
@@ -135,6 +137,22 @@ async def seed_data(session_factory) -> dict[str, int]:
             workspace = Workspace(name="Test workspace", owner_id=creator.id)
             session.add(workspace)
             await session.flush()
+            # creator (người gọi API mặc định) là OWNER, assignee là EDITOR
+            session.add_all(
+                [
+                    WorkspaceMember(
+                        workspace_id=workspace.id,
+                        user_id=creator.id,
+                        role=WorkspaceRole.OWNER,
+                    ),
+                    WorkspaceMember(
+                        workspace_id=workspace.id,
+                        user_id=assignee.id,
+                        role=WorkspaceRole.EDITOR,
+                    ),
+                ]
+            )
+            await session.flush()
             project = Project(name="Project A", workspace_id=workspace.id)
             other_project = Project(name="Project B", workspace_id=workspace.id)
             session.add_all([project, other_project])
@@ -170,6 +188,37 @@ async def client(session_factory, seed_data) -> AsyncIterator[AsyncClient]:
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous_overrides)
+
+
+MakeUser = Callable[..., Awaitable[dict]]
+
+
+@pytest.fixture
+def make_user(session_factory) -> MakeUser:
+    """Tạo user trực tiếp trong DB, trả về id, email và header Bearer."""
+    counter = itertools.count(1)
+
+    async def factory(role: UserRole = UserRole.MEMBER) -> dict:
+        number = next(counter)
+        async with session_factory() as session:
+            async with session.begin():
+                user = User(
+                    email=f"user{number}@example.com",
+                    full_name=f"User {number}",
+                    hashed_password="TEST_LOGIN_DISABLED",
+                    role=role,
+                )
+                session.add(user)
+                await session.flush()
+                return {
+                    "id": user.id,
+                    "email": user.email,
+                    "headers": {
+                        "Authorization": "Bearer " + create_access_token(user.id)
+                    },
+                }
+
+    return factory
 
 
 @app.get("/__test__/protected", include_in_schema=False)

@@ -1,8 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import TaskPriority, TaskStatus
-from app.models import Task
+from app.models import Project, Task
 from app.repositories.base import BaseRepository
 
 
@@ -33,3 +33,12 @@ class TaskRepository(BaseRepository[Task]):
 
         stmt = select(Task).where(*filters).order_by(Task.id)
         return await self.paginate(stmt, page=page, limit=limit)
+
+    async def unassign_in_workspace(self, workspace_id: int, user_id: int) -> None:
+        project_ids = select(Project.id).where(Project.workspace_id == workspace_id)
+        stmt = (
+            update(Task)
+            .where(Task.assignee_id == user_id, Task.project_id.in_(project_ids))
+            .values(assignee_id=None)
+        )
+        await self.session.execute(stmt)
