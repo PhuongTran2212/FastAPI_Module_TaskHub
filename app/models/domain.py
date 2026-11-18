@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import (
+    DEFAULT_LABEL_COLOR,
     EMAIL_MAX_LENGTH,
     JWT_JTI_MAX_LENGTH,
     LABEL_COLOR_MAX_LENGTH,
@@ -49,6 +50,7 @@ task_labels = Table(
         "label_id",
         ForeignKey("labels.id", ondelete="CASCADE"),
         primary_key=True,
+        index=True,
     ),
 )
 
@@ -292,8 +294,8 @@ class Label(Base):
 
     color: Mapped[str] = mapped_column(
         String(LABEL_COLOR_MAX_LENGTH),
-        default="#808080",
-        server_default="#808080",
+        default=DEFAULT_LABEL_COLOR,
+        server_default=DEFAULT_LABEL_COLOR,
     )
 
     project: Mapped[Project] = relationship(

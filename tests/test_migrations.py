@@ -6,5 +6,5 @@ def test_migration_upgrade_downgrade_and_metadata_match(alembic_runner):
         assert "a18010177bdd" in alembic_runner("current")
     finally:
         alembic_runner("upgrade", "head")
-    assert "b1a8de19275e" in alembic_runner("current")
+    assert "5e18a9c041ab" in alembic_runner("current")
     alembic_runner("check")

@@ -70,7 +70,7 @@ class WorkspaceService(TransactionalService):
 
     async def get(self, user: User, workspace_id: int) -> WorkspaceRead:
         async with self.transaction():
-            workspace = await self._get_workspace(
+            workspace = await self.access.get_workspace(
                 user, workspace_id, WorkspaceRole.VIEWER
             )
             return WorkspaceRead.model_validate(workspace)
@@ -82,7 +82,7 @@ class WorkspaceService(TransactionalService):
         data: WorkspaceUpdate,
     ) -> WorkspaceRead:
         async with self.transaction():
-            workspace = await self._get_workspace(
+            workspace = await self.access.get_workspace(
                 user, workspace_id, WorkspaceRole.OWNER
             )
             workspace = await self.workspaces.update(
@@ -92,7 +92,7 @@ class WorkspaceService(TransactionalService):
 
     async def delete(self, user: User, workspace_id: int) -> None:
         async with self.transaction():
-            workspace = await self._get_workspace(
+            workspace = await self.access.get_workspace(
                 user, workspace_id, WorkspaceRole.OWNER
             )
             # FK ON DELETE CASCADE xóa member, project, task, label, comment
@@ -101,7 +101,7 @@ class WorkspaceService(TransactionalService):
     # ---------- Members ----------
     async def list_members(self, user: User, workspace_id: int) -> list[MemberRead]:
         async with self.transaction():
-            await self._get_workspace(user, workspace_id, WorkspaceRole.VIEWER)
+            await self.access.get_workspace(user, workspace_id, WorkspaceRole.VIEWER)
             members = await self.members.list_with_users(workspace_id)
             return [MemberRead.from_member(member, member.user) for member in members]
 
@@ -112,7 +112,7 @@ class WorkspaceService(TransactionalService):
         data: MemberCreate,
     ) -> MemberRead:
         async with self.transaction():
-            workspace = await self._get_workspace(
+            workspace = await self.access.get_workspace(
                 user, workspace_id, WorkspaceRole.OWNER
             )
             invitee = await self.users.get_by_email(data.email)
@@ -138,7 +138,7 @@ class WorkspaceService(TransactionalService):
         data: MemberUpdate,
     ) -> MemberRead:
         async with self.transaction():
-            workspace = await self._get_workspace(
+            workspace = await self.access.get_workspace(
                 user, workspace_id, WorkspaceRole.OWNER
             )
             member = await self._get_changeable_member(workspace, member_user_id)
@@ -155,7 +155,7 @@ class WorkspaceService(TransactionalService):
         member_user_id: int,
     ) -> None:
         async with self.transaction():
-            workspace = await self._get_workspace(
+            workspace = await self.access.get_workspace(
                 user, workspace_id, WorkspaceRole.OWNER
             )
             member = await self._get_changeable_member(workspace, member_user_id)
@@ -164,19 +164,6 @@ class WorkspaceService(TransactionalService):
             await self.members.delete(member)
 
     # ---------- Helpers ----------
-    async def _get_workspace(
-        self,
-        user: User,
-        workspace_id: int,
-        minimum: WorkspaceRole,
-    ) -> Workspace:
-        workspace = await self.workspaces.get(workspace_id)
-        if workspace is None:
-            raise NotFoundException("Workspace")
-        await self.access.require_role(
-            user, workspace.id, minimum, resource="Workspace"
-        )
-        return workspace
 
     async def _get_changeable_member(
         self,
