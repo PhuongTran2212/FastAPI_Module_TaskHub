@@ -4,9 +4,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api.v1.router import api_router
 from app.core.exceptions import AppException
+from app.db.session import engine
 
 
 logging.basicConfig(
@@ -21,14 +23,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("TaskHub starting...")
 
     try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+
+        logger.info("Database connection ready")
+
         yield
     finally:
+        await engine.dispose()
         logger.info("TaskHub shutting down...")
 
 
 app = FastAPI(
     title="TaskHub API",
-    version="0.1.0",
+    version="0.2.0",
     description="Task Management API",
     lifespan=lifespan,
 )

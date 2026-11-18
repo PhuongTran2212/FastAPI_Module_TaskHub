@@ -1,54 +1,53 @@
-from datetime import UTC, datetime
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import DEFAULT_PAGE_LIMIT
-from app.core.enums import TaskStatus
-from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
+from app.core.enums import TaskPriority, TaskStatus
+from app.models import Task
+from app.repositories.base import BaseRepository
 
 
-class TaskRepository:
-    def __init__(self) -> None:
-        self._items: dict[int, TaskRead] = {}
-        self._next_id = 1
+class TaskRepository(BaseRepository[Task]):
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, Task)
 
-    def list(
+    async def list_filtered(
         self,
-        skip: int = 0,
-        limit: int = DEFAULT_PAGE_LIMIT,
-    ) -> list[TaskRead]:
-        return list(self._items.values())[skip : skip + limit]
+        *,
+        page: int,
+        limit: int,
+        project_id: int | None = None,
+        status: TaskStatus | None = None,
+        priority: TaskPriority | None = None,
+        assignee_id: int | None = None,
+    ) -> tuple[list[Task], int]:
+        filters = []
 
-    def get(self, task_id: int) -> TaskRead | None:
-        return self._items.get(task_id)
+        for column, value in (
+            (Task.project_id, project_id),
+            (Task.status, status),
+            (Task.priority, priority),
+            (Task.assignee_id, assignee_id),
+        ):
+            if value is not None:
+                filters.append(column == value)
 
-    def create(self, data: TaskCreate) -> TaskRead:
-        task = TaskRead(
-            id=self._next_id,
-            status=TaskStatus.TODO,
-            created_at=datetime.now(UTC),
-            **data.model_dump(),
+        stmt = (
+            select(Task)
+            .where(*filters)
+            .order_by(Task.id)
+            .offset((page - 1) * limit)
+            .limit(limit)
         )
 
-        self._items[task.id] = task
-        self._next_id += 1
+        result = await self.session.scalars(stmt)
+        items = list(result.all())
 
-        return task
+        count_stmt = (
+            select(func.count())
+            .select_from(Task)
+            .where(*filters)
+        )
 
-    def update(
-        self,
-        task_id: int,
-        data: TaskUpdate,
-    ) -> TaskRead | None:
-        task = self._items.get(task_id)
+        total = (await self.session.scalar(count_stmt)) or 0
 
-        if task is None:
-            return None
-
-        changes = data.model_dump(exclude_unset=True)
-        updated = task.model_copy(update=changes)
-
-        self._items[task_id] = updated
-
-        return updated
-
-    def delete(self, task_id: int) -> bool:
-        return self._items.pop(task_id, None) is not None
+        return items, total

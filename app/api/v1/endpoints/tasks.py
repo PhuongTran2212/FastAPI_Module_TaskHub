@@ -4,14 +4,17 @@ from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import TaskServiceDep
 from app.core.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
+from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.error import ErrorResponse
-from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
+from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
 
 
 router = APIRouter()
 
 VALIDATION_RESPONSES = {
-    422: {"description": "Invalid request data"},
+    422: {
+        "description": "Invalid request data or task reference",
+    },
 }
 
 TASK_RESPONSES = {
@@ -22,22 +25,40 @@ TASK_RESPONSES = {
     },
 }
 
+CONFLICT_RESPONSES = {
+    409: {
+        "model": ErrorResponse,
+        "description": "Task data conflicts with database constraints",
+    },
+}
+
 
 @router.get(
     "",
-    response_model=list[TaskRead],
+    response_model=TaskPage,
     summary="List tasks",
     responses=VALIDATION_RESPONSES,
 )
-def list_tasks(
+async def list_tasks(
     service: TaskServiceDep,
-    skip: Annotated[int, Query(ge=0)] = 0,
+    page: Annotated[int, Query(ge=1)] = 1,
     limit: Annotated[
         int,
         Query(ge=1, le=MAX_PAGE_LIMIT),
     ] = DEFAULT_PAGE_LIMIT,
-) -> list[TaskRead]:
-    return service.list_tasks(skip, limit)
+    project_id: Annotated[int | None, Query(gt=0)] = None,
+    status: TaskStatus | None = None,
+    priority: TaskPriority | None = None,
+    assignee_id: Annotated[int | None, Query(gt=0)] = None,
+) -> TaskPage:
+    return await service.list_tasks(
+        page=page,
+        limit=limit,
+        project_id=project_id,
+        status=status,
+        priority=priority,
+        assignee_id=assignee_id,
+    )
 
 
 @router.post(
@@ -45,13 +66,16 @@ def list_tasks(
     response_model=TaskRead,
     status_code=status.HTTP_201_CREATED,
     summary="Create a task",
-    responses=VALIDATION_RESPONSES,
+    responses={
+        **VALIDATION_RESPONSES,
+        **CONFLICT_RESPONSES,
+    },
 )
-def create_task(
+async def create_task(
     data: TaskCreate,
     service: TaskServiceDep,
 ) -> TaskRead:
-    return service.create_task(data)
+    return await service.create_task(data)
 
 
 @router.get(
@@ -60,25 +84,28 @@ def create_task(
     summary="Get a task",
     responses=TASK_RESPONSES,
 )
-def get_task(
+async def get_task(
     task_id: int,
     service: TaskServiceDep,
 ) -> TaskRead:
-    return service.get_task(task_id)
+    return await service.get_task(task_id)
 
 
 @router.patch(
     "/{task_id}",
     response_model=TaskRead,
     summary="Update a task",
-    responses=TASK_RESPONSES,
+    responses={
+        **TASK_RESPONSES,
+        **CONFLICT_RESPONSES,
+    },
 )
-def update_task(
+async def update_task(
     task_id: int,
     data: TaskUpdate,
     service: TaskServiceDep,
 ) -> TaskRead:
-    return service.update_task(task_id, data)
+    return await service.update_task(task_id, data)
 
 
 @router.delete(
@@ -86,11 +113,15 @@ def update_task(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
     summary="Delete a task",
-    responses=TASK_RESPONSES,
+    responses={
+        **TASK_RESPONSES,
+        **CONFLICT_RESPONSES,
+    },
 )
-def delete_task(
+async def delete_task(
     task_id: int,
     service: TaskServiceDep,
 ) -> Response:
-    service.delete_task(task_id)
+    await service.delete_task(task_id)
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
