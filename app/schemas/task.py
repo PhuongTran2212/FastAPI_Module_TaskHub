@@ -6,6 +6,7 @@ from app.core import messages
 from app.core.constants import MIN_TEXT_LENGTH, TASK_TITLE_MAX_LENGTH
 from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.base import BaseSchema
+from app.schemas.pagination import Page
 
 
 def validate_due_date(value: date | None) -> date | None:
@@ -27,9 +28,8 @@ class TaskBase(BaseSchema):
 
 
 class TaskCreate(TaskBase):
+    # project_id lấy từ path /projects/{project_id}/tasks
     model_config = ConfigDict(extra="forbid")
-
-    project_id: int = Field(gt=0)
 
     @field_validator("due_date")
     @classmethod
@@ -75,8 +75,5 @@ class TaskRead(TaskBase):
     created_at: datetime
 
 
-class TaskPage(BaseSchema):
-    items: list[TaskRead]
-    total: int
-    page: int
-    limit: int
+class TaskPage(Page[TaskRead]):
+    pass

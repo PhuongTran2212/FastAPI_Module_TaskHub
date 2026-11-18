@@ -29,9 +29,8 @@
 
 ## Tasks
 
-- Every `/tasks` endpoint requires login. Day 3 does not check ownership: any
-  logged-in user can update or delete any task. Owner/role checks for
-  update/delete are Day 4.
+- Every task endpoint requires login. Since Day 4, workspace roles and task
+  ownership decide who can read, update and delete; see docs/RBAC.md.
 
 ## Follow-ups
 

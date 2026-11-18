@@ -21,10 +21,10 @@ class UserService:
         self.session = users.session
 
     async def list_users(self, page: int, limit: int) -> UserPage:
-        users = await self.users.list(offset=(page - 1) * limit, limit=limit)
+        users, total = await self.users.list_page(page=page, limit=limit)
         return UserPage(
             items=[UserRead.model_validate(user) for user in users],
-            total=await self.users.count(),
+            total=total,
             page=page,
             limit=limit,
         )

@@ -20,9 +20,16 @@ from app.repositories.project_repository import ProjectRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.task_repository import TaskRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.workspace_repository import (
+    WorkspaceMemberRepository,
+    WorkspaceRepository,
+)
+from app.services.access_service import AccessService
 from app.services.auth_service import AuthService
+from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 from app.services.user_service import UserService
+from app.services.workspace_service import WorkspaceService
 
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
@@ -47,6 +54,16 @@ def get_project_repository(session: SessionDep) -> ProjectRepository:
     return ProjectRepository(session)
 
 
+def get_workspace_repository(session: SessionDep) -> WorkspaceRepository:
+    return WorkspaceRepository(session)
+
+
+def get_workspace_member_repository(
+    session: SessionDep,
+) -> WorkspaceMemberRepository:
+    return WorkspaceMemberRepository(session)
+
+
 UserRepoDep = Annotated[UserRepository, Depends(get_user_repository)]
 RefreshTokenRepoDep = Annotated[
     RefreshTokenRepository,
@@ -54,9 +71,21 @@ RefreshTokenRepoDep = Annotated[
 ]
 TaskRepoDep = Annotated[TaskRepository, Depends(get_task_repository)]
 ProjectRepoDep = Annotated[ProjectRepository, Depends(get_project_repository)]
+WorkspaceRepoDep = Annotated[WorkspaceRepository, Depends(get_workspace_repository)]
+WorkspaceMemberRepoDep = Annotated[
+    WorkspaceMemberRepository,
+    Depends(get_workspace_member_repository),
+]
 
 
 # ---------- Services ----------
+def get_access_service(members: WorkspaceMemberRepoDep) -> AccessService:
+    return AccessService(members)
+
+
+AccessServiceDep = Annotated[AccessService, Depends(get_access_service)]
+
+
 def get_auth_service(
     users: UserRepoDep,
     refresh_tokens: RefreshTokenRepoDep,
@@ -74,14 +103,35 @@ def get_user_service(
 def get_task_service(
     repo: TaskRepoDep,
     projects: ProjectRepoDep,
-    users: UserRepoDep,
+    members: WorkspaceMemberRepoDep,
+    access: AccessServiceDep,
 ) -> TaskService:
-    return TaskService(repo=repo, projects=projects, users=users)
+    return TaskService(repo, projects, members, access)
+
+
+def get_workspace_service(
+    workspaces: WorkspaceRepoDep,
+    members: WorkspaceMemberRepoDep,
+    users: UserRepoDep,
+    tasks: TaskRepoDep,
+    access: AccessServiceDep,
+) -> WorkspaceService:
+    return WorkspaceService(workspaces, members, users, tasks, access)
+
+
+def get_project_service(
+    projects: ProjectRepoDep,
+    workspaces: WorkspaceRepoDep,
+    access: AccessServiceDep,
+) -> ProjectService:
+    return ProjectService(projects, workspaces, access)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
+WorkspaceServiceDep = Annotated[WorkspaceService, Depends(get_workspace_service)]
+ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
 
 
 # ---------- Auth ----------

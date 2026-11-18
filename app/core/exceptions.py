@@ -25,10 +25,12 @@ class NotFoundException(AppException):
         )
 
 
-class InvalidReferenceException(AppException):
-    def __init__(self, resource: str) -> None:
+class UnprocessableException(AppException):
+    """Dữ liệu đúng định dạng nhưng vi phạm quy tắc nghiệp vụ (422)."""
+
+    def __init__(self, detail: str) -> None:
         super().__init__(
-            detail=messages.RESOURCE_NOT_FOUND.format(resource=resource),
+            detail=detail,
             status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
         )
 

@@ -21,6 +21,7 @@ from app.core.constants import (
 )
 from app.core.enums import UserRole
 from app.schemas.base import BaseSchema
+from app.schemas.pagination import Page
 
 
 def normalize_email(value: str) -> str:
@@ -103,8 +104,5 @@ class ChangePasswordRequest(BaseSchema):
         return self
 
 
-class UserPage(BaseSchema):
-    items: list[UserRead]
-    total: int
-    page: int
-    limit: int
+class UserPage(Page[UserRead]):
+    pass

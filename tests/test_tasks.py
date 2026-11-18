@@ -4,20 +4,26 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 
+from app.core import messages
 from app.core.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, TASK_TITLE_MAX_LENGTH
 
 URL = "/api/v1/tasks"
 MISSING_ID = 999_999_999
 
 
-async def create_task(client: AsyncClient, seed_data: dict, **fields) -> dict:
+def project_tasks(project_id: int) -> str:
+    return f"/api/v1/projects/{project_id}/tasks"
+
+
+async def create_task(
+    client: AsyncClient,
+    seed_data: dict,
+    project_id: int | None = None,
+    **fields,
+) -> dict:
     response = await client.post(
-        URL,
-        json={
-            "title": "Task test",
-            "project_id": seed_data["project_id"],
-            **fields,
-        },
+        project_tasks(project_id or seed_data["project_id"]),
+        json={"title": "Task test", **fields},
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -30,16 +36,19 @@ async def test_health(client):
 
 
 async def test_task_crud(client, seed_data):
+    list_url = project_tasks(seed_data["project_id"])
     task = await create_task(client, seed_data, title="  Learn FastAPI  ")
     assert task["title"] == "Learn FastAPI"
     assert task["status"] == "TODO"
     assert task["priority"] == "MEDIUM"
+    assert task["project_id"] == seed_data["project_id"]
+    assert task["created_by"] == seed_data["creator_id"]
     assert task["created_at"]
     path = f"{URL}/{task['id']}"
     response = await client.get(path)
     assert response.status_code == 200
     assert response.json() == task
-    response = await client.get(URL)
+    response = await client.get(list_url)
     assert response.status_code == 200
     assert response.json() == {
         "items": [task],
@@ -56,11 +65,11 @@ async def test_task_crud(client, seed_data):
     assert response.status_code == 204
     assert response.content == b""
     assert (await client.get(path)).status_code == 404
-    assert (await client.get(URL)).json()["total"] == 0
+    assert (await client.get(list_url)).json()["total"] == 0
 
 
-async def test_each_test_has_no_tasks(client):
-    response = await client.get(URL)
+async def test_each_test_has_no_tasks(client, seed_data):
+    response = await client.get(project_tasks(seed_data["project_id"]))
     assert response.status_code == 200
     assert response.json()["items"] == []
     assert response.json()["total"] == 0
@@ -74,21 +83,25 @@ async def test_task_not_found(client, method):
     assert response.json() == {"detail": "Task not found"}
 
 
+@pytest.mark.parametrize("method", ["GET", "POST"])
+async def test_project_tasks_of_missing_project(client, method):
+    kwargs = {"json": {"title": "Task"}} if method == "POST" else {}
+    response = await client.request(method, project_tasks(MISSING_ID), **kwargs)
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Project not found"}
+
+
 @pytest.mark.parametrize("method", ["POST", "PATCH"])
 @pytest.mark.parametrize(
     "title", ["", "   ", "\t\n", "a" * (TASK_TITLE_MAX_LENGTH + 1), None]
 )
 async def test_invalid_title(client, seed_data, method, title):
     if method == "POST":
-        path = URL
-        payload = {
-            "project_id": seed_data["project_id"],
-        }
+        path = project_tasks(seed_data["project_id"])
     else:
         task = await create_task(client, seed_data)
         path = f"{URL}/{task['id']}"
-        payload = {}
-    response = await client.request(method, path, json={**payload, "title": title})
+    response = await client.request(method, path, json={"title": title})
     assert response.status_code == 422
     assert any("title" in error["loc"] for error in response.json()["detail"])
 
@@ -102,12 +115,7 @@ async def test_title_boundary(client, seed_data):
 
 
 async def test_create_requires_title(client, seed_data):
-    response = await client.post(
-        URL,
-        json={
-            "project_id": seed_data["project_id"],
-        },
-    )
+    response = await client.post(project_tasks(seed_data["project_id"]), json={})
     assert response.status_code == 422
 
 
@@ -120,29 +128,30 @@ async def test_patch_rejects_null(client, seed_data, field):
     assert (await client.get(path)).json() == task
 
 
-@pytest.mark.parametrize("value", ["TODO", "DONE", None])
-async def test_create_rejects_status(client, seed_data, value):
-    response = await client.post(
-        URL,
-        json={
-            "title": "Task",
-            "project_id": seed_data["project_id"],
-            "status": value,
-        },
-    )
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("status", "TODO"),
+        ("status", "DONE"),
+        ("status", None),
+        ("project_id", 1),
+        ("created_by", 1),
+    ],
+)
+async def test_create_rejects_server_controlled_fields(client, seed_data, field, value):
+    list_url = project_tasks(seed_data["project_id"])
+    response = await client.post(list_url, json={"title": "Task", field: value})
     assert response.status_code == 422
-    assert (await client.get(URL)).json()["total"] == 0
+    assert (await client.get(list_url)).json()["total"] == 0
 
 
 @pytest.mark.parametrize("method", ["POST", "PATCH"])
 async def test_reject_past_due_date(client, seed_data, method):
     yesterday = (date.today() - timedelta(days=1)).isoformat()
+    list_url = project_tasks(seed_data["project_id"])
     if method == "POST":
-        path = URL
-        payload = {
-            "title": "Task",
-            "project_id": seed_data["project_id"],
-        }
+        path = list_url
+        payload = {"title": "Task"}
     else:
         task = await create_task(client, seed_data)
         path = f"{URL}/{task['id']}"
@@ -154,7 +163,7 @@ async def test_reject_past_due_date(client, seed_data, method):
     if method == "PATCH":
         assert (await client.get(path)).json() == task
     else:
-        assert (await client.get(URL)).json()["total"] == 0
+        assert (await client.get(list_url)).json()["total"] == 0
 
 
 @pytest.mark.parametrize("days", [0, 1])
@@ -222,8 +231,8 @@ async def test_patch_can_clear_nullable_fields(client, seed_data):
 )
 async def test_invalid_values(client, seed_data, method, payload):
     if method == "POST":
-        path = URL
-        payload = {"title": "Task", "project_id": seed_data["project_id"], **payload}
+        path = project_tasks(seed_data["project_id"])
+        payload = {"title": "Task", **payload}
     else:
         task = await create_task(client, seed_data)
         path = f"{URL}/{task['id']}"
@@ -236,34 +245,23 @@ async def test_patch_rejects_invalid_status(client, seed_data):
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize(
-    "field,resource",
-    [
-        ("project_id", "Project"),
-        ("assignee_id", "Assignee"),
-    ],
-)
-async def test_create_rejects_missing_reference(client, seed_data, field, resource):
+async def test_create_rejects_assignee_outside_workspace(client, seed_data):
+    list_url = project_tasks(seed_data["project_id"])
     response = await client.post(
-        URL,
-        json={
-            "title": "Task",
-            "project_id": seed_data["project_id"],
-            field: MISSING_ID,
-        },
+        list_url, json={"title": "Task", "assignee_id": MISSING_ID}
     )
     assert response.status_code == 422
-    assert response.json() == {"detail": f"{resource} not found"}
+    assert response.json() == {"detail": messages.ASSIGNEE_NOT_ALLOWED}
     await create_task(client, seed_data)
-    assert (await client.get(URL)).json()["total"] == 1
+    assert (await client.get(list_url)).json()["total"] == 1
 
 
-async def test_patch_rejects_missing_assignee(client, seed_data):
+async def test_patch_rejects_assignee_outside_workspace(client, seed_data):
     task = await create_task(client, seed_data)
     path = f"{URL}/{task['id']}"
     response = await client.patch(path, json={"assignee_id": MISSING_ID})
     assert response.status_code == 422
-    assert response.json() == {"detail": "Assignee not found"}
+    assert response.json() == {"detail": messages.ASSIGNEE_NOT_ALLOWED}
     assert (await client.get(path)).json() == task
 
 
@@ -275,22 +273,23 @@ async def test_patch_rejects_missing_assignee(client, seed_data):
         {"page": "abc"},
         {"limit": 0},
         {"limit": MAX_PAGE_LIMIT + 1},
-        {"project_id": 0},
         {"assignee_id": 0},
         {"status": "INVALID"},
         {"priority": "INVALID"},
     ],
 )
-async def test_invalid_pagination_and_filters(client, params):
-    assert (await client.get(URL, params=params)).status_code == 422
+async def test_invalid_pagination_and_filters(client, seed_data, params):
+    response = await client.get(project_tasks(seed_data["project_id"]), params=params)
+    assert response.status_code == 422
 
 
 async def test_pagination(client, seed_data):
+    list_url = project_tasks(seed_data["project_id"])
     tasks = [
         await create_task(client, seed_data, title=f"Task {i}")
         for i in range(DEFAULT_PAGE_LIMIT + 1)
     ]
-    response = await client.get(URL)
+    response = await client.get(list_url)
     assert response.status_code == 200
     assert response.json() == {
         "items": tasks[:DEFAULT_PAGE_LIMIT],
@@ -298,46 +297,45 @@ async def test_pagination(client, seed_data):
         "page": 1,
         "limit": DEFAULT_PAGE_LIMIT,
     }
-    response = await client.get(URL, params={"page": 2})
+    response = await client.get(list_url, params={"page": 2})
     assert response.json()["items"] == tasks[DEFAULT_PAGE_LIMIT:]
     assert response.json()["total"] == len(tasks)
-    response = await client.get(URL, params={"page": 100})
+    response = await client.get(list_url, params={"page": 100})
     assert response.json()["items"] == []
     assert response.json()["total"] == len(tasks)
-    assert (await client.get(URL, params={"limit": MAX_PAGE_LIMIT})).json()[
+    assert (await client.get(list_url, params={"limit": MAX_PAGE_LIMIT})).json()[
         "items"
     ] == tasks
 
 
 async def test_filters_and_filtered_total(client, seed_data):
+    list_url = project_tasks(seed_data["project_id"])
     task = await create_task(
         client, seed_data, priority="HIGH", assignee_id=seed_data["assignee_id"]
     )
     task = (await client.patch(f"{URL}/{task['id']}", json={"status": "DONE"})).json()
     await create_task(client, seed_data)
     other = await create_task(
-        client, seed_data, project_id=seed_data["other_project_id"]
+        client,
+        seed_data,
+        project_id=seed_data["other_project_id"],
+        priority="HIGH",
+        assignee_id=seed_data["assignee_id"],
     )
     for params in (
         {"status": "DONE"},
         {"priority": "HIGH"},
         {"assignee_id": seed_data["assignee_id"]},
-        {
-            "project_id": seed_data["project_id"],
-            "status": "DONE",
-            "priority": "HIGH",
-            "assignee_id": seed_data["assignee_id"],
-        },
+        {"status": "DONE", "priority": "HIGH", "assignee_id": seed_data["assignee_id"]},
     ):
-        response = await client.get(URL, params={**params, "limit": 1})
+        response = await client.get(list_url, params={**params, "limit": 1})
         assert response.status_code == 200
         assert response.json()["items"] == [task]
         assert response.json()["total"] == 1
-    response = await client.get(
-        URL, params={"project_id": seed_data["other_project_id"]}
-    )
+    # Mỗi project chỉ trả task của chính nó
+    response = await client.get(project_tasks(seed_data["other_project_id"]))
     assert response.json()["items"] == [other]
-    response = await client.get(URL, params={"status": "IN_REVIEW"})
+    response = await client.get(list_url, params={"status": "IN_REVIEW"})
     assert response.json()["total"] == 0
 
 
@@ -345,6 +343,7 @@ async def test_filters_and_filtered_total(client, seed_data):
 async def test_database_conflict_returns_409_and_rolls_back(
     client, seed_data, db_connection, method
 ):
+    list_url = project_tasks(seed_data["project_id"])
     task = await create_task(client, seed_data)
     # A real constraint triggers IntegrityError without mocking CRUD.
     await db_connection.execute(
@@ -353,23 +352,13 @@ async def test_database_conflict_returns_409_and_rolls_back(
             "CHECK (title <> 'constraint-conflict')"
         )
     )
-    if method == "POST":
-        path = URL
-        payload = {
-            "title": "constraint-conflict",
-            "project_id": seed_data["project_id"],
-        }
-    else:
-        path = f"{URL}/{task['id']}"
-        payload = {"title": "constraint-conflict"}
-    response = await client.request(method, path, json=payload)
+    path = list_url if method == "POST" else f"{URL}/{task['id']}"
+    response = await client.request(method, path, json={"title": "constraint-conflict"})
     assert response.status_code == 409
-    assert response.json() == {
-        "detail": "Task data conflicts with database constraints"
-    }
+    assert response.json() == {"detail": messages.TASK_CONFLICT}
     assert (await client.get(f"{URL}/{task['id']}")).json() == task
     await create_task(client, seed_data, title="Valid after conflict")
-    assert (await client.get(URL)).json()["total"] == 2
+    assert (await client.get(list_url)).json()["total"] == 2
 
 
 async def test_delete_database_conflict_returns_409(client, seed_data, db_connection):
@@ -386,9 +375,7 @@ async def test_delete_database_conflict_returns_409(client, seed_data, db_connec
     )
     response = await client.delete(f"{URL}/{task['id']}")
     assert response.status_code == 409
-    assert response.json() == {
-        "detail": "Task data conflicts with database constraints"
-    }
+    assert response.json() == {"detail": messages.TASK_CONFLICT}
     assert (await client.get(f"{URL}/{task['id']}")).json() == task
 
 
@@ -398,21 +385,25 @@ async def test_openapi_contract(client):
     spec = response.json()
     create = spec["components"]["schemas"]["TaskCreate"]
     assert "status" not in create["properties"]
+    assert "project_id" not in create["properties"]
     assert create["additionalProperties"] is False
+    list_path = "/api/v1/projects/{project_id}/tasks"
+    task_path = URL + "/{task_id}"
     expected = [
-        ("get", URL, "200"),
-        ("post", URL, "201"),
-        ("get", URL + "/{task_id}", "200"),
-        ("patch", URL + "/{task_id}", "200"),
-        ("delete", URL + "/{task_id}", "204"),
+        ("get", list_path, "200"),
+        ("post", list_path, "201"),
+        ("get", task_path, "200"),
+        ("patch", task_path, "200"),
+        ("delete", task_path, "204"),
     ]
     for method, path, success in expected:
         operation = spec["paths"][path][method]
         assert operation["summary"]
-        assert success in operation["responses"]
-        assert "422" in operation["responses"]
-    for method in ("get", "patch", "delete"):
-        assert "404" in spec["paths"][URL + "/{task_id}"][method]["responses"]
-    assert (
-        "content" not in spec["paths"][URL + "/{task_id}"]["delete"]["responses"]["204"]
-    )
+        assert operation["security"] == [{"HTTPBearer": []}]
+        for code in (success, "401", "403", "404", "422"):
+            assert code in operation["responses"]
+    for method, path in (("post", list_path), ("patch", task_path)):
+        assert "409" in spec["paths"][path][method]["responses"]
+    assert "content" not in spec["paths"][task_path]["delete"]["responses"]["204"]
+    # Đường dẫn cũ của Day 3 đã chuyển vào /projects/{project_id}/tasks
+    assert URL not in spec["paths"]

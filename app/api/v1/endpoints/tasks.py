@@ -1,125 +1,73 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, Response, status
 
 from app.api.deps import CurrentUser, TaskServiceDep
-from app.api.pagination import PaginationDep
-from app.api.responses import AUTH_RESPONSES, VALIDATION_RESPONSES
+from app.api.responses import (
+    AUTH_RESPONSES,
+    VALIDATION_RESPONSES,
+    conflict_response,
+    not_found_response,
+)
 from app.core import messages
-from app.core.enums import TaskPriority, TaskStatus
-from app.schemas.error import ErrorResponse
-from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
+from app.schemas.task import TaskRead, TaskUpdate
 
 router = APIRouter()
 
-# Mọi route /tasks yêu cầu đăng nhập (xem api/v1/router.py) → luôn có 401/403
-LIST_RESPONSES = {
+# Tạo và liệt kê task nằm ở /projects/{project_id}/tasks (endpoints/projects.py)
+TASK_RESPONSES = {
     **VALIDATION_RESPONSES,
     **AUTH_RESPONSES,
+    **not_found_response("Task"),
 }
-
-TASK_RESPONSES = {
-    **LIST_RESPONSES,
-    status.HTTP_404_NOT_FOUND: {
-        "model": ErrorResponse,
-        "description": messages.RESOURCE_NOT_FOUND.format(resource="Task"),
-    },
+TASK_WRITE_RESPONSES = {
+    **TASK_RESPONSES,
+    **conflict_response(f"{messages.PROJECT_ARCHIVED} / {messages.TASK_CONFLICT}"),
 }
-
-CONFLICT_RESPONSES = {
-    status.HTTP_409_CONFLICT: {
-        "model": ErrorResponse,
-        "description": messages.TASK_CONFLICT,
-    },
-}
-
-
-@router.get(
-    "",
-    response_model=TaskPage,
-    summary="List tasks",
-    responses=LIST_RESPONSES,
-)
-async def list_tasks(
-    service: TaskServiceDep,
-    pagination: PaginationDep,
-    project_id: Annotated[int | None, Query(gt=0)] = None,
-    status: TaskStatus | None = None,
-    priority: TaskPriority | None = None,
-    assignee_id: Annotated[int | None, Query(gt=0)] = None,
-) -> TaskPage:
-    return await service.list_tasks(
-        page=pagination.page,
-        limit=pagination.limit,
-        project_id=project_id,
-        status=status,
-        priority=priority,
-        assignee_id=assignee_id,
-    )
-
-
-@router.post(
-    "",
-    response_model=TaskRead,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a task",
-    responses={
-        **LIST_RESPONSES,
-        **CONFLICT_RESPONSES,
-    },
-)
-async def create_task(
-    data: TaskCreate,
-    current_user: CurrentUser,
-    service: TaskServiceDep,
-) -> TaskRead:
-    return await service.create_task(data, creator_id=current_user.id)
 
 
 @router.get(
     "/{task_id}",
     response_model=TaskRead,
-    summary="Get a task",
+    summary="Get a task (any member)",
     responses=TASK_RESPONSES,
 )
 async def get_task(
     task_id: int,
+    current_user: CurrentUser,
     service: TaskServiceDep,
 ) -> TaskRead:
-    return await service.get_task(task_id)
+    return await service.get_task(current_user, task_id)
 
 
 @router.patch(
     "/{task_id}",
     response_model=TaskRead,
-    summary="Update a task",
-    responses={
-        **TASK_RESPONSES,
-        **CONFLICT_RESPONSES,
-    },
+    summary="Update, assign or move a task through statuses (EDITOR)",
+    description=(
+        "`assignee_id` must be an OWNER or EDITOR member of the task's workspace; "
+        "send `null` to unassign."
+    ),
+    responses=TASK_WRITE_RESPONSES,
 )
 async def update_task(
     task_id: int,
     data: TaskUpdate,
+    current_user: CurrentUser,
     service: TaskServiceDep,
 ) -> TaskRead:
-    return await service.update_task(task_id, data)
+    return await service.update_task(current_user, task_id, data)
 
 
 @router.delete(
     "/{task_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
-    summary="Delete a task",
-    responses={
-        **TASK_RESPONSES,
-        **CONFLICT_RESPONSES,
-    },
+    summary="Delete a task (its creator, or the workspace OWNER)",
+    responses=TASK_WRITE_RESPONSES,
 )
 async def delete_task(
     task_id: int,
+    current_user: CurrentUser,
     service: TaskServiceDep,
 ) -> Response:
-    await service.delete_task(task_id)
-
+    await service.delete_task(current_user, task_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
