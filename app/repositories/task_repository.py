@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -10,6 +12,29 @@ from app.repositories.base import BaseRepository
 class TaskRepository(BaseRepository[Task]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, Task)
+
+    async def _invalidate_task_list(self, project_id: int) -> None:
+        # This UPDATE is committed or rolled back together with the task change.
+        await self.session.execute(
+            update(Project)
+            .where(Project.id == project_id)
+            .values(task_cache_version=Project.task_cache_version + 1)
+        )
+
+    async def create(self, values: dict[str, Any]) -> Task:
+        task = await super().create(values)
+        await self._invalidate_task_list(task.project_id)
+        return task
+
+    async def update(self, item: Task, values: dict[str, Any]) -> Task:
+        task = await super().update(item, values)
+        await self._invalidate_task_list(task.project_id)
+        return task
+
+    async def delete(self, item: Task) -> None:
+        project_id = item.project_id
+        await super().delete(item)
+        await self._invalidate_task_list(project_id)
 
     async def list_filtered(
         self,
@@ -45,5 +70,8 @@ class TaskRepository(BaseRepository[Task]):
             update(Task)
             .where(Task.assignee_id == user_id, Task.project_id.in_(project_ids))
             .values(assignee_id=None)
+            .returning(Task.project_id)
         )
-        await self.session.execute(stmt)
+        project_ids_changed = set((await self.session.scalars(stmt)).all())
+        for project_id in sorted(project_ids_changed):
+            await self._invalidate_task_list(project_id)

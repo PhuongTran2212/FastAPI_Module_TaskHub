@@ -4,6 +4,7 @@ from app.core.exceptions import (
     ForbiddenException,
     UnprocessableException,
 )
+from app.core.task_cache import TaskPageCache
 from app.models import User
 from app.repositories.task_repository import TaskRepository
 from app.repositories.workspace_repository import WorkspaceMemberRepository
@@ -23,11 +24,13 @@ class TaskService(TransactionalService):
         repo: TaskRepository,
         members: WorkspaceMemberRepository,
         access: AccessService,
+        cache: TaskPageCache,
     ) -> None:
         super().__init__(repo.session)
         self.repo = repo
         self.members = members
         self.access = access
+        self.cache = cache
 
     async def list_tasks(
         self,
@@ -41,7 +44,22 @@ class TaskService(TransactionalService):
         assignee_id: int | None = None,
     ) -> TaskPage:
         async with self.transaction():
-            await self.access.get_project(user, project_id, WorkspaceRole.VIEWER)
+            # Always verify the current project and membership before Redis.
+            project = await self.access.get_project(
+                user, project_id, WorkspaceRole.VIEWER
+            )
+            key = self.cache.key(
+                project.id,
+                project.task_cache_version,
+                page=page,
+                limit=limit,
+                status=status,
+                priority=priority,
+                assignee_id=assignee_id,
+            )
+            cached = await self.cache.get(key)
+            if cached is not None:
+                return cached
             items, total = await self.repo.list_filtered(
                 project_id=project_id,
                 page=page,
@@ -50,12 +68,16 @@ class TaskService(TransactionalService):
                 priority=priority,
                 assignee_id=assignee_id,
             )
-            return TaskPage(
+            result = TaskPage(
                 items=[TaskRead.model_validate(item) for item in items],
                 total=total,
                 page=page,
                 limit=limit,
             )
+        # A late fill uses the version read above, so cannot resurrect stale data
+        # under a newer generation after a concurrent committed task write.
+        await self.cache.put(key, result)
+        return result
 
     async def get_task(self, user: User, task_id: int) -> TaskRead:
         async with self.transaction():
