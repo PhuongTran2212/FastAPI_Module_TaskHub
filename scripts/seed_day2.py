@@ -12,9 +12,7 @@ async def main() -> None:
         async with SessionFactory() as session:
             async with session.begin():
                 user = await session.scalar(
-                    select(User).where(
-                        User.email == "day2@example.com"
-                    )
+                    select(User).where(User.email == "day2@example.com")
                 )
 
                 if user is None:

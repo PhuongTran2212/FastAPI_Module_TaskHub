@@ -1,4 +1,4 @@
-# Day 2 PostgreSQL tests
+# PostgreSQL integration tests
 
 Install the test dependencies from the project root:
 
@@ -9,7 +9,7 @@ Install the test dependencies from the project root:
 Create a dedicated database as a PostgreSQL administrator:
 
 ```sql
-CREATE DATABASE taskhub_day2_test OWNER taskhub;
+CREATE DATABASE taskhub_day3_test OWNER taskhub;
 ```
 
 Copy `.env.test.example` to `.env.test` and set the real connection credentials.
@@ -31,3 +31,6 @@ service commits while an outer transaction rolls back each test's data and DDL.
 Coverage includes pagination/filter totals, request validation, 404/422/409
 responses and rollback recovery, foreign-key deletion behavior, label uniqueness,
 and OpenAPI response contracts. Tests exercise PostgreSQL constraints directly.
+
+Authentication tests generate a private signing key for each pytest process.
+Refresh concurrency tests use separate PostgreSQL connections and real commits.

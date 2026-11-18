@@ -42,11 +42,7 @@ class TaskRepository(BaseRepository[Task]):
         result = await self.session.scalars(stmt)
         items = list(result.all())
 
-        count_stmt = (
-            select(func.count())
-            .select_from(Task)
-            .where(*filters)
-        )
+        count_stmt = select(func.count()).select_from(Task).where(*filters)
 
         total = (await self.session.scalar(count_stmt)) or 0
 

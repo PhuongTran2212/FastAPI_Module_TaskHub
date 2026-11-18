@@ -1,0 +1,13 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = [".worktrees", "venv", "alembic/versions/5857005dfb78_create_taskhub_tables.py", "alembic/versions/0d97a0968e0b_fix_foreign_keys_and_unique_constraint_.py"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/conftest.py" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
