@@ -2,10 +2,11 @@
 from collections.abc import Awaitable, Callable
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import BackgroundTasks, Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.enums import TokenType, UserRole
 from app.core.exceptions import (
     ForbiddenException,
@@ -31,6 +32,7 @@ from app.services.access_service import AccessService
 from app.services.auth_service import AuthService
 from app.services.comment_service import CommentService
 from app.services.label_service import LabelService
+from app.services.notifications import AssignmentNotifications
 from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 from app.services.user_service import UserService
@@ -113,6 +115,19 @@ def get_task_cache(request: Request) -> TaskPageCache:
 TaskCacheDep = Annotated[TaskPageCache, Depends(get_task_cache)]
 
 
+def get_assignment_notifications(
+    background: BackgroundTasks,
+) -> AssignmentNotifications:
+    return AssignmentNotifications(
+        background, enabled=get_settings().assignment_email_enabled
+    )
+
+
+NotificationsDep = Annotated[
+    AssignmentNotifications, Depends(get_assignment_notifications)
+]
+
+
 def get_auth_service(
     users: UserRepoDep,
     refresh_tokens: RefreshTokenRepoDep,
@@ -132,8 +147,9 @@ def get_task_service(
     members: WorkspaceMemberRepoDep,
     access: AccessServiceDep,
     cache: TaskCacheDep,
+    notifications: NotificationsDep,
 ) -> TaskService:
-    return TaskService(repo, members, access, cache)
+    return TaskService(repo, members, access, cache, notifications)
 
 
 def get_workspace_service(

@@ -44,3 +44,30 @@ jobs:
       - run: python -m ruff check app tests scripts
       - run: python -m ruff format --check app tests scripts
       - run: python -m pytest -q
+
+  compose-background:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: taskhub-ci
+      REFRESH_CLEANUP_INTERVAL_SECONDS: "5"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.12"
+      - name: Configure private CI settings
+        run: |
+          python - <<'PY'
+          import secrets
+          from pathlib import Path
+          Path('.env').write_text('JWT_SECRET_KEY=' + secrets.token_hex(32) + '\n')
+          PY
+      - run: docker compose up --build --wait --wait-timeout 180
+      - run: python scripts/smoke_background.py
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 120
+      - name: Remove disposable CI stack
+        if: always()
+        run: docker compose down --volumes

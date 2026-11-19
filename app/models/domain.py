@@ -355,7 +355,7 @@ class RefreshToken(TimestampMixin, Base):
 
     jti: Mapped[str] = mapped_column(String(JWT_JTI_MAX_LENGTH), unique=True)
 
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

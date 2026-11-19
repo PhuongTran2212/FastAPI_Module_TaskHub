@@ -11,6 +11,7 @@ from app.repositories.workspace_repository import WorkspaceMemberRepository
 from app.schemas.task import TaskCreate, TaskPage, TaskRead, TaskUpdate
 from app.services.access_service import AccessService
 from app.services.base import TransactionalService
+from app.services.notifications import AssignmentNotifications
 
 # Người được giao task phải sửa được task đó (VIEWER chỉ xem)
 ASSIGNABLE_ROLES = {WorkspaceRole.OWNER, WorkspaceRole.EDITOR}
@@ -25,12 +26,14 @@ class TaskService(TransactionalService):
         members: WorkspaceMemberRepository,
         access: AccessService,
         cache: TaskPageCache,
+        notifications: AssignmentNotifications,
     ) -> None:
         super().__init__(repo.session)
         self.repo = repo
         self.members = members
         self.access = access
         self.cache = cache
+        self.notifications = notifications
 
     async def list_tasks(
         self,
@@ -104,7 +107,9 @@ class TaskService(TransactionalService):
             values["created_by"] = user.id
 
             task = await self.repo.create(values)
-            return TaskRead.model_validate(task)
+            result = TaskRead.model_validate(task)
+        self.notifications.assigned(result.id, result.assignee_id)
+        return result
 
     async def update_task(
         self,
@@ -117,12 +122,16 @@ class TaskService(TransactionalService):
             self.access.ensure_writable(task.project)
 
             changes = data.model_dump(exclude_unset=True)
+            previous_assignee = task.assignee_id
             assignee_id = changes.get("assignee_id")
             if assignee_id is not None:
                 await self._ensure_assignable(task.project.workspace_id, assignee_id)
 
             task = await self.repo.update(task, changes)
-            return TaskRead.model_validate(task)
+            result = TaskRead.model_validate(task)
+        if result.assignee_id != previous_assignee:
+            self.notifications.assigned(result.id, result.assignee_id)
+        return result
 
     async def delete_task(self, user: User, task_id: int) -> None:
         async with self.transaction():

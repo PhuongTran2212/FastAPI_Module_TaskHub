@@ -1,7 +1,7 @@
 # app/repositories/refresh_token_repository.py
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import RefreshToken
@@ -11,6 +11,29 @@ from app.repositories.base import BaseRepository
 class RefreshTokenRepository(BaseRepository[RefreshToken]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, RefreshToken)
+
+    async def delete_expired_batch(self, cutoff: datetime, *, limit: int) -> int:
+        # Keep revoked-but-unexpired tokens for reuse detection. SKIP LOCKED
+        # allows overlapping workers without waiting on each other's batch.
+        ids = list(
+            (
+                await self.session.scalars(
+                    select(RefreshToken.id)
+                    .where(RefreshToken.expires_at <= cutoff)
+                    .order_by(RefreshToken.expires_at, RefreshToken.id)
+                    .limit(limit)
+                    .with_for_update(skip_locked=True)
+                )
+            ).all()
+        )
+        if not ids:
+            return 0
+        deleted = await self.session.scalars(
+            delete(RefreshToken)
+            .where(RefreshToken.id.in_(ids))
+            .returning(RefreshToken.id)
+        )
+        return len(deleted.all())
 
     async def get_by_jti(
         self,

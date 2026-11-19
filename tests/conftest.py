@@ -63,6 +63,7 @@ TEST_DATABASE_URL = load_test_database_url()
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["JWT_SECRET_KEY"] = secrets.token_hex(32)
 os.environ["TASK_CACHE_ENABLED"] = "false"
+os.environ["ASSIGNMENT_EMAIL_ENABLED"] = "false"
 
 from app.api.deps import CurrentUser  # noqa: E402
 from app.core.enums import UserRole, WorkspaceRole  # noqa: E402
