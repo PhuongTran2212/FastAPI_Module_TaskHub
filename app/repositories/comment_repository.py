@@ -27,4 +27,4 @@ class CommentRepository(BaseRepository[Comment]):
             .options(joinedload(Comment.task).joinedload(Task.project))
             .where(Comment.id == comment_id)
         )
-        return await self.session.scalar(stmt)
+        return (await self.session.scalars(stmt)).one_or_none()

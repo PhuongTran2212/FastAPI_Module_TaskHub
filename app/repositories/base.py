@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 from typing import Any, Generic, TypeVar
 
 from sqlalchemy import ColumnElement, Select, func, select
@@ -25,12 +26,7 @@ class BaseRepository(Generic[T]):
         offset: int = 0,
         limit: int = DEFAULT_PAGE_LIMIT,
     ) -> list[T]:
-        stmt = (
-            select(self.model)
-            .order_by(*self.model.__table__.primary_key.columns)
-            .offset(offset)
-            .limit(limit)
-        )
+        stmt = self._ordered_select().offset(offset).limit(limit)
 
         result = await self.session.scalars(stmt)
         return list(result.all())
@@ -45,7 +41,7 @@ class BaseRepository(Generic[T]):
         *,
         page: int,
         limit: int,
-    ) -> tuple[list[T], int]:
+    ) -> tuple[builtins.list[T], int]:
         """Trả về (items của trang, tổng số dòng khớp điều kiện của stmt)."""
         count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
         total = (await self.session.scalar(count_stmt)) or 0
@@ -55,16 +51,18 @@ class BaseRepository(Generic[T]):
         )
         return list(result.all()), total
 
-    async def list_page(self, *, page: int, limit: int) -> tuple[list[T], int]:
-        stmt = select(self.model).order_by(*self.model.__table__.primary_key.columns)
-        return await self.paginate(stmt, page=page, limit=limit)
+    def _ordered_select(self) -> Select[tuple[T]]:
+        return select(self.model).order_by(*self.model.__mapper__.primary_key)
+
+    async def list_page(self, *, page: int, limit: int) -> tuple[builtins.list[T], int]:
+        return await self.paginate(self._ordered_select(), page=page, limit=limit)
 
     async def create(self, values: dict[str, Any]) -> T:
         item = self.model(**values)
         self.session.add(item)
 
         await self.session.flush()
-        await self.session.refresh(item)
+        # PostgreSQL INSERT RETURNING already populates IDs/server defaults.
         return item
 
     async def update(self, item: T, values: dict[str, Any]) -> T:
@@ -72,7 +70,7 @@ class BaseRepository(Generic[T]):
             setattr(item, field, value)
 
         await self.session.flush()
-        await self.session.refresh(item)
+        # Current models have no server-generated UPDATE fields to reload.
         return item
 
     async def delete(self, item: T) -> None:

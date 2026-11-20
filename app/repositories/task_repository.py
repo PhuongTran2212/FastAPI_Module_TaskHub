@@ -62,7 +62,7 @@ class TaskRepository(BaseRepository[Task]):
     async def get_with_project(self, task_id: int) -> Task | None:
         # Nạp kèm project để biết workspace và trạng thái archive
         stmt = select(Task).options(joinedload(Task.project)).where(Task.id == task_id)
-        return await self.session.scalar(stmt)
+        return (await self.session.scalars(stmt)).one_or_none()
 
     async def unassign_in_workspace(self, workspace_id: int, user_id: int) -> None:
         project_ids = select(Project.id).where(Project.workspace_id == workspace_id)

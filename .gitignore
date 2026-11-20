@@ -11,3 +11,4 @@ pytest-cache-files-*/
 
 .worktrees/
 .ruff_cache/
+.mypy_cache/

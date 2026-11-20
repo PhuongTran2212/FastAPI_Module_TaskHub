@@ -15,7 +15,7 @@ class LabelRepository(BaseRepository[Label]):
         stmt = (
             select(Label).options(joinedload(Label.project)).where(Label.id == label_id)
         )
-        return await self.session.scalar(stmt)
+        return (await self.session.scalars(stmt)).one_or_none()
 
     async def list_by_project(self, project_id: int) -> list[Label]:
         stmt = (

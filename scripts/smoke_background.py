@@ -8,13 +8,21 @@ import secrets
 import subprocess
 import time
 import uuid
+from collections.abc import Callable
+from typing import Any, TypeVar
 from urllib.request import Request, urlopen
 
 API = "http://127.0.0.1:8000/api/v1"
 MAILPIT = "http://127.0.0.1:8025/api/v1/messages"
+ResultT = TypeVar("ResultT")
 
 
-def request(method, url, data=None, access_token=None):
+def request(
+    method: str,
+    url: str,
+    data: dict[str, object] | None = None,
+    access_token: str | None = None,
+) -> dict[str, Any]:
     headers = {"Content-Type": "application/json"}
     if access_token:
         headers["Authorization"] = f"Bearer {access_token}"
@@ -23,10 +31,13 @@ def request(method, url, data=None, access_token=None):
         Request(url, data=payload, headers=headers, method=method), timeout=10
     ) as response:
         content = response.read()
-        return json.loads(content) if content else None
+        body = json.loads(content) if content else {}
+        if not isinstance(body, dict):
+            raise AssertionError("Expected an object in the API response")
+        return body
 
 
-def wait_for(check, *, timeout=60):
+def wait_for(check: Callable[[], ResultT], *, timeout: float = 60) -> ResultT:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if result := check():
@@ -35,7 +46,7 @@ def wait_for(check, *, timeout=60):
     raise AssertionError("Background work did not finish before the timeout")
 
 
-def compose_python(source):
+def compose_python(source: str) -> str:
     result = subprocess.run(
         ["docker", "compose", "exec", "-T", "api", "python", "-c", source],
         capture_output=True,
@@ -46,7 +57,7 @@ def compose_python(source):
     return result.stdout.strip()
 
 
-def main():
+def main() -> None:
     suffix = uuid.uuid4().hex
     email = f"smoke-{suffix}@example.com"
     password = secrets.token_hex(24)
@@ -59,10 +70,12 @@ def main():
             "full_name": "Compose smoke",
         },
     )
-    auth = request("POST", f"{API}/auth/login", {"email": email, "password": password})
-    access = auth["access_token"]
-    workspace = None
+    workspace: dict[str, Any] | None = None
     try:
+        auth = request(
+            "POST", f"{API}/auth/login", {"email": email, "password": password}
+        )
+        access = auth["access_token"]
         workspace = request(
             "POST", f"{API}/workspaces", {"name": f"Smoke {suffix}"}, access
         )
@@ -83,7 +96,7 @@ def main():
         )
         subject = f"TaskHub assignment #{task['id']}"
 
-        def matching_messages():
+        def matching_messages() -> list[dict[str, Any]]:
             return [
                 message
                 for message in request("GET", MAILPIT)["messages"]
@@ -116,7 +129,7 @@ async def seed():
 asyncio.run(seed())
 """)
 
-        def expired_removed():
+        def expired_removed() -> bool:
             return (
                 compose_python(f"""
 import asyncio

@@ -7,13 +7,15 @@ from fastapi import status
 from app.core import messages
 from app.schemas.error import ErrorResponse
 
-VALIDATION_RESPONSES = {
+type Responses = dict[int | str, dict[str, Any]]
+
+VALIDATION_RESPONSES: Responses = {
     status.HTTP_422_UNPROCESSABLE_CONTENT: {
         "description": "Invalid request data or reference",
     },
 }
 
-UNAUTHORIZED_RESPONSES = {
+UNAUTHORIZED_RESPONSES: Responses = {
     status.HTTP_401_UNAUTHORIZED: {
         "model": ErrorResponse,
         "description": messages.AUTHENTICATION_REQUIRED,
@@ -21,17 +23,17 @@ UNAUTHORIZED_RESPONSES = {
     },
 }
 
-FORBIDDEN_RESPONSES = {
+FORBIDDEN_RESPONSES: Responses = {
     status.HTTP_403_FORBIDDEN: {
         "model": ErrorResponse,
         "description": messages.PERMISSION_DENIED,
     },
 }
 
-AUTH_RESPONSES = {**UNAUTHORIZED_RESPONSES, **FORBIDDEN_RESPONSES}
+AUTH_RESPONSES: Responses = {**UNAUTHORIZED_RESPONSES, **FORBIDDEN_RESPONSES}
 
 
-def not_found_response(*resources: str) -> dict[int | str, dict[str, Any]]:
+def not_found_response(*resources: str) -> Responses:
     """Một mã 404 chỉ có một mô tả, nên gộp mọi resource có thể không tìm thấy."""
     return {
         status.HTTP_404_NOT_FOUND: {
@@ -44,7 +46,7 @@ def not_found_response(*resources: str) -> dict[int | str, dict[str, Any]]:
     }
 
 
-def conflict_response(description: str) -> dict[int | str, dict[str, Any]]:
+def conflict_response(description: str) -> Responses:
     return {
         status.HTTP_409_CONFLICT: {
             "model": ErrorResponse,
