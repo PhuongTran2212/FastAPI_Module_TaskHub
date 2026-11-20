@@ -155,7 +155,7 @@ async def test_broker_failure_keeps_committed_task_and_hides_error_details(
     monkeypatch.setattr(jobs.send_assignment_email, "apply_async", apply)
     task = await create_task(client, seed_data)
     apply.assert_called_once_with(
-        args=[task["id"], seed_data["assignee_id"]],
+        args=(task["id"], seed_data["assignee_id"]),
         retry=False,
         expires=get_settings().assignment_email_expires_seconds,
     )

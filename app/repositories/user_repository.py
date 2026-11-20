@@ -12,4 +12,4 @@ class UserRepository(BaseRepository[User]):
 
     async def get_by_email(self, email: str) -> User | None:
         stmt = select(User).where(User.email == email)
-        return await self.session.scalar(stmt)
+        return (await self.session.scalars(stmt)).one_or_none()

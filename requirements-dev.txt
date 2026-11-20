@@ -5,3 +5,5 @@ httpx==0.28.1
 ruff==0.17.5
 fakeredis==2.40.0
 aiosmtpd==1.4.6
+mypy==2.4.1
+celery-types==0.26.0

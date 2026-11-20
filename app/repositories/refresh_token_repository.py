@@ -47,7 +47,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             # Khóa dòng: 2 request refresh cùng lúc không thể cùng dùng 1 token
             stmt = stmt.with_for_update()
 
-        return await self.session.scalar(stmt)
+        return (await self.session.scalars(stmt)).one_or_none()
 
     async def revoke(self, token: RefreshToken) -> None:
         token.revoked_at = datetime.now(UTC)
