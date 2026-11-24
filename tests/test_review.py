@@ -126,8 +126,6 @@ async def test_server_generated_update_default_is_available_without_implicit_io(
     session_factory, db_connection
 ):
 
-
-
     class UpdatedItem(Base):
         __tablename__ = "review_generated_defaults"
         id: Mapped[int] = mapped_column(primary_key=True)
