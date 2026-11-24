@@ -3,13 +3,16 @@ import os
 import secrets
 import subprocess
 import sys
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from dotenv import dotenv_values
+from fakeredis import FakeAsyncRedis
 from httpx import ASGITransport, AsyncClient
+from redis.asyncio import Redis
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
@@ -59,10 +62,12 @@ TEST_DATABASE_URL = load_test_database_url()
 # Configure before importing the app so its lifespan uses the test DB too.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["JWT_SECRET_KEY"] = secrets.token_hex(32)
+os.environ["TASK_CACHE_ENABLED"] = "false"
 
 from app.api.deps import CurrentUser  # noqa: E402
 from app.core.enums import UserRole, WorkspaceRole  # noqa: E402
 from app.core.security import create_access_token  # noqa: E402
+from app.core.task_cache import TaskPageCache  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Project, User, Workspace, WorkspaceMember  # noqa: E402
@@ -90,6 +95,27 @@ def migrated_database() -> None:
 @pytest.fixture
 def alembic_runner(migrated_database) -> Callable[..., str]:
     return run_alembic
+
+
+@pytest_asyncio.fixture
+async def task_page_cache() -> AsyncIterator[TaskPageCache]:
+    """Same tests run against Redis 7 in CI and an isolated fake locally."""
+    url = os.environ.get("TEST_REDIS_URL")
+    if url:
+        # Never flush a shared DB. A UUID namespace scopes every test's cleanup.
+        client = Redis.from_url(url, protocol=2, socket_timeout=2)
+        await client.ping()
+    else:
+        client = FakeAsyncRedis(version=(7, 2))
+    cache = TaskPageCache(client, namespace=f"taskhub:test:{uuid.uuid4().hex}")
+    try:
+        yield cache
+    finally:
+        try:
+            async for key in client.scan_iter(match=f"{cache.namespace}:*"):
+                await client.delete(key)
+        finally:
+            await client.aclose()
 
 
 @pytest_asyncio.fixture

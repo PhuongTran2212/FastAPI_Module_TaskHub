@@ -2,13 +2,18 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, RedisDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.constants import (
     DEFAULT_ACCESS_TOKEN_MINUTES,
     DEFAULT_REFRESH_TOKEN_DAYS,
     JWT_SECRET_MIN_LENGTH,
+    REDIS_MAX_CONNECTIONS,
+    REDIS_POOL_WAIT_SECONDS,
+    REDIS_TIMEOUT_SECONDS,
+    TASK_CACHE_MAX_TTL_SECONDS,
+    TASK_CACHE_TTL_SECONDS,
 )
 
 
@@ -19,6 +24,17 @@ class Settings(BaseSettings):
     )
 
     database_url: str
+
+    redis_url: RedisDsn = RedisDsn("redis://localhost:6379/0")
+    task_cache_enabled: bool = True
+    task_cache_ttl_seconds: int = Field(
+        default=TASK_CACHE_TTL_SECONDS,
+        gt=0,
+        le=TASK_CACHE_MAX_TTL_SECONDS,
+    )
+    redis_timeout_seconds: float = Field(default=REDIS_TIMEOUT_SECONDS, gt=0, le=5)
+    redis_max_connections: int = Field(default=REDIS_MAX_CONNECTIONS, ge=1)
+    redis_pool_wait_seconds: float = Field(default=REDIS_POOL_WAIT_SECONDS, gt=0, le=5)
 
     jwt_secret_key: str = Field(min_length=JWT_SECRET_MIN_LENGTH)
     jwt_algorithm: Literal["HS256"] = "HS256"

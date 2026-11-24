@@ -7,7 +7,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api.v1.router import api_router
+from app.core.config import get_settings
 from app.core.exceptions import AppException
+from app.core.task_cache import task_cache_lifespan
 from app.db.session import engine
 
 logging.basicConfig(
@@ -27,7 +29,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         logger.info("Database connection ready")
 
-        yield
+        async with task_cache_lifespan(get_settings()) as task_cache:
+            app.state.task_cache = task_cache
+            yield
     finally:
         await engine.dispose()
         logger.info("TaskHub shutting down...")

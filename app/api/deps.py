@@ -2,7 +2,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from app.core.exceptions import (
     UnauthorizedException,
 )
 from app.core.security import decode_token
+from app.core.task_cache import TaskPageCache
 from app.db.session import get_db
 from app.models import User
 from app.repositories.comment_repository import CommentRepository
@@ -105,6 +106,13 @@ def get_access_service(
 AccessServiceDep = Annotated[AccessService, Depends(get_access_service)]
 
 
+def get_task_cache(request: Request) -> TaskPageCache:
+    return request.app.state.task_cache
+
+
+TaskCacheDep = Annotated[TaskPageCache, Depends(get_task_cache)]
+
+
 def get_auth_service(
     users: UserRepoDep,
     refresh_tokens: RefreshTokenRepoDep,
@@ -123,8 +131,9 @@ def get_task_service(
     repo: TaskRepoDep,
     members: WorkspaceMemberRepoDep,
     access: AccessServiceDep,
+    cache: TaskCacheDep,
 ) -> TaskService:
-    return TaskService(repo, members, access)
+    return TaskService(repo, members, access, cache)
 
 
 def get_workspace_service(
