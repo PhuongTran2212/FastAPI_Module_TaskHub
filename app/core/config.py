@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import EmailStr, Field, RedisDsn, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core import constants
 from app.core.constants import (
     DEFAULT_ACCESS_TOKEN_MINUTES,
     DEFAULT_REFRESH_TOKEN_DAYS,
@@ -15,6 +16,7 @@ from app.core.constants import (
     TASK_CACHE_MAX_TTL_SECONDS,
     TASK_CACHE_TTL_SECONDS,
 )
+from app.core.enums import SmtpSecurity
 
 
 class Settings(BaseSettings):
@@ -37,25 +39,51 @@ class Settings(BaseSettings):
     redis_pool_wait_seconds: float = Field(default=REDIS_POOL_WAIT_SECONDS, gt=0, le=5)
 
     celery_broker_url: RedisDsn = RedisDsn("redis://localhost:6379/1")
-    job_connection_timeout_seconds: float = Field(default=2, gt=0, le=30)
-    job_max_retries: int = Field(default=3, ge=0, le=10)
+    job_connection_timeout_seconds: float = Field(
+        default=constants.JOB_CONNECTION_TIMEOUT_SECONDS,
+        gt=0,
+        le=constants.JOB_CONNECTION_MAX_TIMEOUT_SECONDS,
+    )
+    job_max_retries: int = Field(
+        default=constants.JOB_MAX_RETRIES, ge=0, le=constants.JOB_MAX_RETRIES_LIMIT
+    )
     assignment_email_enabled: bool = False
-    assignment_email_expires_seconds: int = Field(default=3600, gt=0)
+    assignment_email_expires_seconds: int = Field(
+        default=constants.ASSIGNMENT_EMAIL_EXPIRES_SECONDS, gt=0
+    )
     smtp_host: str = Field(default="localhost", min_length=1)
-    smtp_port: int = Field(default=1025, ge=1, le=65535)
+    smtp_port: int = Field(
+        default=constants.SMTP_PORT, ge=1, le=constants.MAX_NETWORK_PORT
+    )
     smtp_from_email: EmailStr = "taskhub@example.com"
-    smtp_security: Literal["none", "starttls", "ssl"] = "none"
+    smtp_security: SmtpSecurity = SmtpSecurity.NONE
     smtp_username: str | None = None
     smtp_password: SecretStr | None = None
-    smtp_timeout_seconds: float = Field(default=5, gt=0, le=60)
-    refresh_cleanup_interval_seconds: int = Field(default=300, ge=1)
-    refresh_cleanup_batch_size: int = Field(default=500, ge=1, le=5000)
+    smtp_timeout_seconds: float = Field(
+        default=constants.SMTP_TIMEOUT_SECONDS,
+        gt=0,
+        le=constants.SMTP_MAX_TIMEOUT_SECONDS,
+    )
+    refresh_cleanup_interval_seconds: int = Field(
+        default=constants.REFRESH_CLEANUP_INTERVAL_SECONDS, ge=1
+    )
+    refresh_cleanup_batch_size: int = Field(
+        default=constants.REFRESH_CLEANUP_BATCH_SIZE,
+        ge=1,
+        le=constants.REFRESH_CLEANUP_MAX_BATCH_SIZE,
+    )
+
+    refresh_cleanup_budget_seconds: float = Field(
+        default=constants.REFRESH_CLEANUP_BUDGET_SECONDS,
+        gt=0,
+        le=constants.REFRESH_CLEANUP_MAX_BUDGET_SECONDS,
+    )
 
     @model_validator(mode="after")
     def validate_smtp_auth(self) -> "Settings":
         if bool(self.smtp_username) != bool(self.smtp_password):
             raise ValueError("SMTP username and password must be configured together")
-        if self.smtp_username and self.smtp_security == "none":
+        if self.smtp_username and self.smtp_security == SmtpSecurity.NONE:
             raise ValueError("SMTP authentication requires starttls or ssl")
         return self
 

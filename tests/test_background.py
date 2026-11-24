@@ -8,14 +8,16 @@ from datetime import UTC, datetime, timedelta
 from email import policy
 from email.parser import BytesParser
 from queue import Queue
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from aiosmtpd.controller import Controller
 from fastapi import BackgroundTasks
 from kombu.exceptions import OperationalError
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import delete, select, text
+from sqlalchemy.exc import IntegrityError, InterfaceError, ProgrammingError
+from sqlalchemy.exc import OperationalError as DBOperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -267,7 +269,6 @@ def test_email_job_does_nothing_when_disabled(monkeypatch):
 
 @pytest.mark.parametrize("security", ["starttls", "ssl"])
 def test_authenticated_smtp_verifies_tls_before_login(monkeypatch, security):
-    from pydantic import SecretStr
 
     settings = get_settings().model_copy(
         update={
@@ -308,7 +309,7 @@ def test_smtp_failure_is_retryable_and_does_not_leak_recipient(smtp_sink, monkey
     monkeypatch.setattr(
         smtplib.SMTP,
         "send_message",
-        Mock(side_effect=smtplib.SMTPException("private@example.test")),
+        Mock(side_effect=smtplib.SMTPServerDisconnected("private@example.test")),
     )
     # Celery performs the retries in eager mode; stop after the configured bound.
     delivery = jobs.send_assignment_email.apply(args=[42, 7])
@@ -374,8 +375,8 @@ async def test_cleanup_batches_are_idempotent_and_preserve_unexpired_revoked_tok
         retained_ids = {row.id for row in retained}
     settings = get_settings().model_copy(update={"refresh_cleanup_batch_size": 2})
     monkeypatch.setattr(jobs, "get_settings", lambda: settings)
-    assert await jobs.cleanup_expired_tokens() == 2
-    assert await jobs.cleanup_expired_tokens() == 1
+    assert await jobs.cleanup_expired_tokens() == 3
+    assert await jobs.cleanup_expired_tokens() == 0
     assert await jobs.cleanup_expired_tokens() == 0
     async with session_factory() as session:
         assert (
@@ -454,3 +455,90 @@ async def test_overlapping_cleanup_workers_skip_locked_rows(migrated_database):
                     await session.execute(delete(User).where(User.id == user_id))
         finally:
             await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("private-quit-error"),
+        smtplib.SMTPResponseException(451, b"private-quit-error"),
+    ],
+)
+def test_quit_failure_after_acceptance_does_not_retry(
+    smtp_sink, monkeypatch, caplog, error
+):
+    connection = Mock()
+    smtp = MagicMock()
+    smtp.return_value.__enter__.return_value = connection
+    smtp.return_value.__exit__.side_effect = error
+    monkeypatch.setattr(smtplib, "SMTP", smtp)
+    details = AsyncMock(return_value=("private@example.test", "Private title"))
+    monkeypatch.setattr(jobs, "assignment_details", details)
+    assert jobs.send_assignment_email.apply(args=[42, 7], throw=True).result is True
+    connection.send_message.assert_called_once()
+    assert details.await_count == 1
+    assert type(error).__name__ in caplog.text
+    assert "private-quit-error" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        smtplib.SMTPAuthenticationError(535, b"private-auth"),
+        smtplib.SMTPRecipientsRefused(
+            {"private@example.test": (550, b"private-recipient")}
+        ),
+    ],
+)
+def test_permanent_smtp_rejection_is_sanitized_and_not_retried(
+    smtp_sink, monkeypatch, caplog, error
+):
+    details = AsyncMock(return_value=("private@example.test", "Private title"))
+    monkeypatch.setattr(jobs, "assignment_details", details)
+    monkeypatch.setattr(smtplib.SMTP, "send_message", Mock(side_effect=error))
+    result = jobs.send_assignment_email.apply(args=[42, 7])
+    assert result.failed()
+    assert isinstance(result.result, jobs.EmailDeliveryPermanentError)
+    assert details.await_count == 1
+    assert type(error).__name__ in caplog.text
+    assert "private-auth" not in caplog.text
+    assert "private-recipient" not in caplog.text
+    assert "private@example.test" not in caplog.text
+
+
+async def test_cleanup_stops_at_its_time_budget(worker_session, monkeypatch):
+    settings = get_settings().model_copy(
+        update={"refresh_cleanup_budget_seconds": 0.01}
+    )
+    monkeypatch.setattr(jobs, "get_settings", lambda: settings)
+
+    async def blocked(*args, **kwargs):
+        await asyncio.sleep(1)
+        return settings.refresh_cleanup_batch_size
+
+    monkeypatch.setattr(RefreshTokenRepository, "delete_expired_batch", blocked)
+    assert await jobs.cleanup_expired_tokens() == 0
+
+
+@pytest.mark.parametrize(
+    "error_type,retryable",
+    [
+        (DBOperationalError, True),
+        (InterfaceError, True),
+        (ProgrammingError, False),
+        (IntegrityError, False),
+    ],
+)
+def test_email_retries_only_transient_database_errors(
+    monkeypatch, error_type, retryable
+):
+    settings = get_settings().model_copy(update={"assignment_email_enabled": True})
+    monkeypatch.setattr(jobs, "get_settings", lambda: settings)
+    details = AsyncMock(
+        side_effect=error_type(None, None, Exception("database failure"))
+    )
+    monkeypatch.setattr(jobs, "assignment_details", details)
+    result = jobs.send_assignment_email.apply(args=[42, 7])
+    assert result.failed()
+    assert isinstance(result.result, error_type)
+    assert details.await_count == (settings.job_max_retries + 1 if retryable else 1)

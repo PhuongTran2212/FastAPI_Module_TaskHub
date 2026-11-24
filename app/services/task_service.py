@@ -1,4 +1,5 @@
 from app.core import messages
+from app.core.constants import ASSIGNABLE_ROLES
 from app.core.enums import TaskPriority, TaskStatus, WorkspaceRole
 from app.core.exceptions import (
     ForbiddenException,
@@ -14,7 +15,6 @@ from app.services.base import TransactionalService
 from app.services.notifications import AssignmentNotifications
 
 # Người được giao task phải sửa được task đó (VIEWER chỉ xem)
-ASSIGNABLE_ROLES = {WorkspaceRole.OWNER, WorkspaceRole.EDITOR}
 
 
 class TaskService(TransactionalService):
