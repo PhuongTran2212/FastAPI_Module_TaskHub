@@ -7,14 +7,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from pydantic import ValidationError
-from redis.asyncio import Redis
+from redis.asyncio import BlockingConnectionPool, Redis
 from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
 from redis.retry import Retry
 from sqlalchemy.engine import make_url
 
 from app.core.config import Settings
-from app.core.constants import REDIS_MAX_CONNECTIONS, TASK_CACHE_TTL_SECONDS
+from app.core.constants import TASK_CACHE_TTL_SECONDS
 from app.core.enums import TaskPriority, TaskStatus
 from app.schemas.task import TaskPage
 
@@ -84,14 +84,16 @@ def database_cache_namespace(database_url: str) -> str:
 async def task_cache_lifespan(settings: Settings) -> AsyncIterator[TaskPageCache]:
     client = None
     if settings.task_cache_enabled:
-        client = Redis.from_url(
+        pool = BlockingConnectionPool.from_url(
             str(settings.redis_url),
             socket_connect_timeout=settings.redis_timeout_seconds,
             socket_timeout=settings.redis_timeout_seconds,
-            max_connections=REDIS_MAX_CONNECTIONS,
+            max_connections=settings.redis_max_connections,
+            timeout=settings.redis_pool_wait_seconds,
             retry=Retry(NoBackoff(), 0),
             protocol=2,
         )
+        client = Redis.from_pool(pool)
     cache = TaskPageCache(
         client,
         namespace=database_cache_namespace(settings.database_url),

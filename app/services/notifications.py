@@ -4,13 +4,13 @@ from fastapi import BackgroundTasks
 from kombu.exceptions import OperationalError
 
 from app.core.config import get_settings
+from app.jobs import send_assignment_email
 
 logger = logging.getLogger(__name__)
 
 
 def publish_assignment_email(task_id: int, assignee_id: int) -> None:
     # Runs in Starlette's thread pool after the response, never on the event loop.
-    from app.jobs import send_assignment_email
 
     try:
         send_assignment_email.apply_async(

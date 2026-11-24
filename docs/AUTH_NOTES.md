@@ -48,26 +48,27 @@ in DB 0. Jobs accept JSON IDs only and do not store results.
 - The worker reads the current task/user/membership. Deleted or reassigned tasks,
   inactive users and users who are no longer OWNER/EDITOR are skipped. The
   recipient is read from the database, never supplied in the queue message.
-- SMTP failures retry up to `JOB_MAX_RETRIES` (3 by default) with exponential
+- Transient SMTP/connectivity failures retry up to `JOB_MAX_RETRIES` (3 by default) with exponential
   backoff and jitter. Notification messages expire after 1 hour by default.
   SMTP authentication requires TLS (`starttls` or `ssl`), with certificate
   verification. Logs omit email addresses, task titles and SMTP credentials.
 - This is best-effort delivery: a broker outage is logged and leaves the task
   saved; an API process crash between commit and publication can lose an email.
-  There is no transactional outbox or exactly-once delivery. SMTP retries can
-  duplicate an email; the job keeps the same Message-ID across its retries.
+  There is no transactional outbox or exactly-once delivery. Failures after SMTP acceptance during QUIT do not retry. Ambiguous failures during DATA can
+  still duplicate an email; the job keeps the same Message-ID across its retries.
   Membership/task changes after the worker's read can race with SMTP delivery.
 
 ### Expired refresh tokens
 
-- Every 300 seconds, beat schedules a cleanup of at most 500 expired rows,
-  ordered by expiry and ID. `expires_at` has an index (migration `7b019dca0001`).
+- Every 300 seconds, beat schedules a cleanup of batches of 500 expired rows,
+  ordered by expiry and ID, until the backlog is drained or the 30-second budget expires.
+  Each batch commits independently. `expires_at` has an index (migration `7b019dca0001`).
 - `FOR UPDATE SKIP LOCKED` makes overlapping cleanup workers select disjoint
   batches; deletion commits atomically. Re-running a batch is safe.
 - Both active and revoked **expired** rows are deleted. Revoked but unexpired
   tokens remain available for reuse detection. Access-token behavior is unchanged.
 - Configure `REFRESH_CLEANUP_INTERVAL_SECONDS` and
-  `REFRESH_CLEANUP_BATCH_SIZE` for the expected volume. Run only one beat process;
+  `REFRESH_CLEANUP_BATCH_SIZE` and `REFRESH_CLEANUP_BUDGET_SECONDS` for the expected volume. Run only one beat process;
   old queued cleanup jobs expire after one interval.
 
 ### Run the full stack (recommended on Windows)

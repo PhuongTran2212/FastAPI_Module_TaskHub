@@ -87,3 +87,10 @@ bulk-unassignment invalidation, membership revocation/cascades, Redis outage and
 recovery, rollback after an attempted counter increment, late cache-fill races and
 independent concurrent PostgreSQL commits. No email/background task or Day 7
 cleanup job is included in this PR.
+
+## Connection pool
+
+Redis uses an owned BlockingConnectionPool. REDIS_MAX_CONNECTIONS defaults to 10;
+REDIS_POOL_WAIT_SECONDS defaults to 0.1 seconds. Excess requests wait briefly for
+a released connection; after the bounded timeout the existing PostgreSQL fallback
+applies. The lifespan closes the client and its owned pool.

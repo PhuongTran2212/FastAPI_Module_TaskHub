@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fakeredis import FakeAsyncRedis
 from pydantic import ValidationError
+from redis.asyncio import BlockingConnectionPool
+from redis.asyncio.connection import Connection
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.core.config import Settings
@@ -81,7 +83,7 @@ async def test_corrupt_payload_is_treated_as_a_miss(task_page_cache, payload):
 
 async def test_disabled_cache_does_not_create_redis_connections():
     settings = Settings(_env_file=None, task_cache_enabled=False)
-    with patch("app.core.task_cache.Redis.from_url") as factory:
+    with patch("app.core.task_cache.Redis.from_pool") as factory:
         async with task_cache_lifespan(settings) as cache:
             assert await cache.get("anything") is None
             await cache.put("anything", sample_page())
@@ -92,7 +94,7 @@ async def test_cache_lifespan_closes_pool_even_if_application_fails():
     settings = Settings(_env_file=None, task_cache_enabled=True)
     client = FakeAsyncRedis()
     close = AsyncMock(wraps=client.aclose)
-    with patch("app.core.task_cache.Redis.from_url", return_value=client) as factory:
+    with patch("app.core.task_cache.Redis.from_pool", return_value=client) as factory:
         with patch.object(client, "aclose", close):
             with pytest.raises(RuntimeError, match="app failure"):
                 async with task_cache_lifespan(settings) as cache:
@@ -100,10 +102,11 @@ async def test_cache_lifespan_closes_pool_even_if_application_fails():
                     raise RuntimeError("app failure")
             close.assert_awaited_once()
         assert (
-            factory.call_args.kwargs["socket_timeout"] == settings.redis_timeout_seconds
+            factory.call_args.args[0].connection_kwargs["socket_timeout"]
+            == settings.redis_timeout_seconds
         )
         assert (
-            factory.call_args.kwargs["socket_connect_timeout"]
+            factory.call_args.args[0].connection_kwargs["socket_connect_timeout"]
             == settings.redis_timeout_seconds
         )
 
@@ -111,7 +114,7 @@ async def test_cache_lifespan_closes_pool_even_if_application_fails():
 async def test_cache_startup_outage_can_recover_without_app_restart():
     settings = Settings(_env_file=None, task_cache_enabled=True)
     client = FakeAsyncRedis()
-    with patch("app.core.task_cache.Redis.from_url", return_value=client):
+    with patch("app.core.task_cache.Redis.from_pool", return_value=client):
         with patch.object(
             client, "ping", AsyncMock(side_effect=RedisConnectionError())
         ):
@@ -132,3 +135,40 @@ async def test_cache_startup_outage_can_recover_without_app_restart():
 def test_settings_reject_invalid_cache_configuration(changes):
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **changes)
+
+
+async def test_blocking_pool_waits_for_capacity_and_has_bounded_timeout():
+    class LocalConnection(Connection):
+        async def connect(self):
+            pass
+
+        async def can_read(self):
+            return False
+
+    pool = BlockingConnectionPool(
+        connection_class=LocalConnection, max_connections=10, timeout=0.1
+    )
+    held = await asyncio.gather(*[pool.get_connection() for _ in range(10)])
+    pending = [asyncio.create_task(pool.get_connection()) for _ in range(5)]
+    try:
+        await asyncio.sleep(0.01)
+        assert all(not task.done() for task in pending)
+        await asyncio.gather(*[pool.release(connection) for connection in held])
+        acquired = await asyncio.gather(*pending)
+        await asyncio.gather(*[pool.release(connection) for connection in acquired])
+        held = await asyncio.gather(*[pool.get_connection() for _ in range(10)])
+        with pytest.raises(RedisConnectionError, match="No connection available"):
+            await pool.get_connection()
+    finally:
+        for task in pending:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+        await asyncio.gather(*[pool.release(connection) for connection in held])
+        await pool.aclose()
+
+
+def test_pool_configuration_is_validated():
+    for changes in ({"redis_max_connections": 0}, {"redis_pool_wait_seconds": 0}):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, **changes)

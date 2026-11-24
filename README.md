@@ -149,6 +149,8 @@ biết giá trị được truyền cụ thể vào stack phát triển.
 | `TASK_CACHE_ENABLED` | true |
 | `TASK_CACHE_TTL_SECONDS` | 60 |
 | `REDIS_TIMEOUT_SECONDS` | 0.2 |
+| `REDIS_MAX_CONNECTIONS` | 10 |
+| `REDIS_POOL_WAIT_SECONDS` | 0.1 |
 | `CELERY_BROKER_URL` | `redis://localhost:6379/1` |
 | `JOB_CONNECTION_TIMEOUT_SECONDS` | 2 |
 | `JOB_MAX_RETRIES` | 3 |
@@ -161,6 +163,7 @@ biết giá trị được truyền cụ thể vào stack phát triển.
 | `SMTP_TIMEOUT_SECONDS` | 5 |
 | `REFRESH_CLEANUP_INTERVAL_SECONDS` | 300 (5 phút) |
 | `REFRESH_CLEANUP_BATCH_SIZE` | 500 |
+| `REFRESH_CLEANUP_BUDGET_SECONDS` | 30, ng?n s?ch x? l? nhi?u batch |
 | `POSTGRES_PASSWORD` | Biến dành cho Compose; mặc định demo `taskhub_dev` |
 | `TEST_DATABASE_URL` | Database riêng dành cho pytest, tên kết thúc bằng `_test` |
 | `TEST_REDIS_URL` | Tùy chọn; pytest dùng Redis thật nếu có, fakeredis nếu bỏ trống |
