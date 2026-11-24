@@ -1,9 +1,11 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
-from sqlalchemy import event
+from sqlalchemy import DateTime, String, event, func, inspect
+from sqlalchemy.orm import Mapped, mapped_column
 
+from app.db.base import Base
 from app.models import Task, WorkspaceMember
 from app.repositories.base import BaseRepository
 from app.repositories.task_repository import TaskRepository
@@ -123,12 +125,8 @@ def test_omitted_patch_due_date_stays_omitted_and_explicit_null_can_clear():
 async def test_server_generated_update_default_is_available_without_implicit_io(
     session_factory, db_connection
 ):
-    from datetime import datetime
 
-    from sqlalchemy import DateTime, String, func, inspect
-    from sqlalchemy.orm import Mapped, mapped_column
 
-    from app.db.base import Base
 
     class UpdatedItem(Base):
         __tablename__ = "review_generated_defaults"
