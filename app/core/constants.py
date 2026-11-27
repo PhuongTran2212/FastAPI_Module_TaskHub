@@ -19,13 +19,13 @@ PASSWORD_HASH_MAX_LENGTH = 255
 WORKSPACE_NAME_MAX_LENGTH = 255
 PROJECT_NAME_MAX_LENGTH = 255
 LABEL_NAME_MAX_LENGTH = 100
-# Mã màu hex dạng #RRGGBB
+# MÃ£ mÃ u hex dáº¡ng #RRGGBB
 LABEL_COLOR_MAX_LENGTH = 7
 LABEL_COLOR_PATTERN = r"^#[0-9A-Fa-f]{6}$"
 DEFAULT_LABEL_COLOR = "#808080"
 COMMENT_CONTENT_MAX_LENGTH = 5000
 PASSWORD_MIN_LENGTH = 8
-# bcrypt chỉ dùng 72 byte đầu của mật khẩu
+# bcrypt chá»‰ dÃ¹ng 72 byte Ä‘áº§u cá»§a máº­t kháº©u
 BCRYPT_MAX_BYTES = 72
 
 JWT_SECRET_MIN_LENGTH = 32
@@ -54,7 +54,6 @@ REFRESH_CLEANUP_BUDGET_SECONDS = 30
 REFRESH_CLEANUP_MAX_BUDGET_SECONDS = 300
 
 
-# Người được giao task phải sửa được task đó (VIEWER chỉ xem).
 ASSIGNABLE_ROLES = frozenset({WorkspaceRole.OWNER, WorkspaceRole.EDITOR})
 
 MAX_NETWORK_PORT = 65535

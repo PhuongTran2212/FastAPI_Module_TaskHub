@@ -14,6 +14,8 @@ from app.services.access_service import AccessService
 from app.services.base import TransactionalService
 from app.services.notifications import AssignmentNotifications
 
+# Người được giao task phải sửa được task đó (VIEWER chỉ xem)
+
 
 class TaskService(TransactionalService):
     conflict_message = messages.TASK_CONFLICT
