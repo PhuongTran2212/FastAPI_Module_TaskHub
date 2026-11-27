@@ -49,12 +49,15 @@ in DB 0. Jobs accept JSON IDs only and do not store results.
   inactive users and users who are no longer OWNER/EDITOR are skipped. The
   recipient is read from the database, never supplied in the queue message.
 - Transient SMTP/connectivity failures retry up to `JOB_MAX_RETRIES` (3 by default) with exponential
-  backoff and jitter. Notification messages expire after 1 hour by default.
+  backoff and jitter. SMTP reply codes 4xx (including recipient greylisting) retry;
+  5xx and TLS certificate verification errors do not. Notification messages expire
+  after 1 hour by default.
   SMTP authentication requires TLS (`starttls` or `ssl`), with certificate
   verification. Logs omit email addresses, task titles and SMTP credentials.
 - This is best-effort delivery: a broker outage is logged and leaves the task
   saved; an API process crash between commit and publication can lose an email.
-  There is no transactional outbox or exactly-once delivery. Failures after SMTP acceptance during QUIT do not retry. Ambiguous failures during DATA can
+  There is no transactional outbox or exactly-once delivery. Failures after SMTP acceptance during QUIT do not retry and log at INFO,
+  separately from delivery failures. Ambiguous failures during DATA can
   still duplicate an email; the job keeps the same Message-ID across its retries.
   Membership/task changes after the worker's read can race with SMTP delivery.
 
