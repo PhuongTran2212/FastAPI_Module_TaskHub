@@ -1,7 +1,8 @@
 # app/repositories/refresh_token_repository.py
 from datetime import UTC, datetime
+from typing import Any, cast
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import CursorResult, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import RefreshToken
@@ -27,7 +28,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             .where(RefreshToken.id.in_(ids))
             .execution_options(synchronize_session=False)
         )
-        return result.rowcount
+        return cast(CursorResult[Any], result).rowcount
 
     async def get_by_jti(
         self,
@@ -41,7 +42,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             # Khóa dòng: 2 request refresh cùng lúc không thể cùng dùng 1 token
             stmt = stmt.with_for_update()
 
-        return await self.session.scalar(stmt)
+        return (await self.session.scalars(stmt)).one_or_none()
 
     async def revoke(self, token: RefreshToken) -> None:
         token.revoked_at = datetime.now(UTC)

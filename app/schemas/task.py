@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Annotated
 
-from pydantic import AfterValidator, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, ConfigDict, Field
 
 from app.core import messages
 from app.core.constants import MIN_TEXT_LENGTH, TASK_TITLE_MAX_LENGTH
@@ -15,6 +15,9 @@ def validate_due_date(value: date | None) -> date | None:
         raise ValueError(messages.DUE_DATE_IN_PAST)
 
     return value
+
+
+TaskDueDate = Annotated[date | None, AfterValidator(validate_due_date)]
 
 
 class TaskBase(BaseSchema):
@@ -32,10 +35,7 @@ class TaskCreate(TaskBase):
     # project_id lấy từ path /projects/{project_id}/tasks
     model_config = ConfigDict(extra="forbid")
 
-    @field_validator("due_date")
-    @classmethod
-    def check_due_date(cls, value: date | None) -> date | None:
-        return validate_due_date(value)
+    due_date: TaskDueDate = None
 
 
 class TaskUpdate(BaseSchema):
@@ -49,13 +49,8 @@ class TaskUpdate(BaseSchema):
     description: str | None = None
     status: Annotated[TaskStatus | None, AfterValidator(reject_null)] = None
     priority: Annotated[TaskPriority | None, AfterValidator(reject_null)] = None
-    due_date: date | None = None
+    due_date: TaskDueDate = None
     assignee_id: int | None = Field(default=None, gt=0)
-
-    @field_validator("due_date")
-    @classmethod
-    def check_due_date(cls, value: date | None) -> date | None:
-        return validate_due_date(value)
 
 
 class TaskRead(TaskBase):

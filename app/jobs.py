@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import smtplib
@@ -7,6 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from email.message import EmailMessage
 
+from celery import Task as CeleryTask
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -87,22 +90,23 @@ def deliver_assignment(
     message["Subject"] = f"TaskHub assignment #{task_id}"
     message["Message-ID"] = f"<assignment-{delivery_id}@taskhub.local>"
     message.set_content(f"You have been assigned task #{task_id}:\n\n{title}\n")
-    smtp_type = (
-        smtplib.SMTP_SSL if settings.smtp_security == SmtpSecurity.SSL else smtplib.SMTP
-    )
-    tls_options = (
-        {"context": ssl.create_default_context()}
-        if settings.smtp_security == SmtpSecurity.SSL
-        else {}
-    )
     sent = False
     try:
-        with smtp_type(
-            settings.smtp_host,
-            settings.smtp_port,
-            timeout=settings.smtp_timeout_seconds,
-            **tls_options,
-        ) as connection:
+        smtp: smtplib.SMTP
+        if settings.smtp_security == SmtpSecurity.SSL:
+            smtp = smtplib.SMTP_SSL(
+                settings.smtp_host,
+                settings.smtp_port,
+                timeout=settings.smtp_timeout_seconds,
+                context=ssl.create_default_context(),
+            )
+        else:
+            smtp = smtplib.SMTP(
+                settings.smtp_host,
+                settings.smtp_port,
+                timeout=settings.smtp_timeout_seconds,
+            )
+        with smtp as connection:
             if settings.smtp_security == SmtpSecurity.STARTTLS:
                 connection.starttls(context=ssl.create_default_context())
             if settings.smtp_username and settings.smtp_password:
@@ -131,7 +135,9 @@ def deliver_assignment(
     retry_jitter=True,
     max_retries=get_settings().job_max_retries,
 )
-def send_assignment_email(self, task_id: int, assignee_id: int) -> bool:
+def send_assignment_email(
+    self: CeleryTask[[int, int], bool], task_id: int, assignee_id: int
+) -> bool:
     if not get_settings().assignment_email_enabled:
         return False
     details = asyncio.run(assignment_details(task_id, assignee_id))

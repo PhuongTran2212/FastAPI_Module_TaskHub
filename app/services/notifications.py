@@ -14,7 +14,7 @@ def publish_assignment_email(task_id: int, assignee_id: int) -> None:
 
     try:
         send_assignment_email.apply_async(
-            args=[task_id, assignee_id],
+            args=(task_id, assignee_id),
             retry=False,
             expires=get_settings().assignment_email_expires_seconds,
         )

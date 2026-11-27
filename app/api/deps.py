@@ -1,6 +1,6 @@
 # app/api/deps.py
 from collections.abc import Awaitable, Callable
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import BackgroundTasks, Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -109,7 +109,8 @@ AccessServiceDep = Annotated[AccessService, Depends(get_access_service)]
 
 
 def get_task_cache(request: Request) -> TaskPageCache:
-    return request.app.state.task_cache
+    # Starlette state is dynamic; the app lifespan owns this typed value.
+    return cast(TaskPageCache, request.app.state.task_cache)
 
 
 TaskCacheDep = Annotated[TaskPageCache, Depends(get_task_cache)]
