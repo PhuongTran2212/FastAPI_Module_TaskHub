@@ -31,6 +31,18 @@ class EmailDeliveryError(Exception):
     """A retryable error whose message contains no SMTP credentials or recipient."""
 
 
+def _is_retryable_smtp_error(exc: OSError) -> bool:
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return False
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return any(400 <= code < 500 for code, _ in exc.recipients.values())
+    if isinstance(exc, smtplib.SMTPResponseException):
+        return 400 <= exc.smtp_code < 500
+    if isinstance(exc, smtplib.SMTPServerDisconnected):
+        return True
+    return not isinstance(exc, smtplib.SMTPException)
+
+
 @asynccontextmanager
 async def job_session() -> AsyncIterator[AsyncSession]:
     # Celery's sync tasks use asyncio.run per execution; do not reuse an async
@@ -100,13 +112,12 @@ def deliver_assignment(
             connection.send_message(message)
             sent = True
     except (smtplib.SMTPException, OSError) as exc:
-        logger.warning("SMTP delivery failed: %s", type(exc).__name__)
         if sent:
             # The server accepted DATA; failure during QUIT must not resend it.
+            logger.info("SMTP QUIT failed after delivery: %s", type(exc).__name__)
             return
-        if isinstance(
-            exc, (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError)
-        ) or not isinstance(exc, smtplib.SMTPException):
+        logger.warning("SMTP delivery failed: %s", type(exc).__name__)
+        if _is_retryable_smtp_error(exc):
             raise EmailDeliveryError("SMTP delivery failed") from None
         raise EmailDeliveryPermanentError("SMTP delivery rejected") from None
 
