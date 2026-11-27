@@ -163,7 +163,7 @@ biết giá trị được truyền cụ thể vào stack phát triển.
 | `SMTP_TIMEOUT_SECONDS` | 5 |
 | `REFRESH_CLEANUP_INTERVAL_SECONDS` | 300 (5 phút) |
 | `REFRESH_CLEANUP_BATCH_SIZE` | 500 |
-| `REFRESH_CLEANUP_BUDGET_SECONDS` | 30, ng?n s?ch x? l? nhi?u batch |
+| `REFRESH_CLEANUP_BUDGET_SECONDS` | 30, ngân sách xử lý nhiều batch |
 | `POSTGRES_PASSWORD` | Biến dành cho Compose; mặc định demo `taskhub_dev` |
 | `TEST_DATABASE_URL` | Database riêng dành cho pytest, tên kết thúc bằng `_test` |
 | `TEST_REDIS_URL` | Tùy chọn; pytest dùng Redis thật nếu có, fakeredis nếu bỏ trống |
