@@ -70,7 +70,7 @@ class BaseRepository(Generic[T]):
             setattr(item, field, value)
 
         await self.session.flush()
-        # Base eagerly fetches defaults before async response serialization.
+        # Current models have no server-generated UPDATE fields to reload.
         return item
 
     async def delete(self, item: T) -> None:

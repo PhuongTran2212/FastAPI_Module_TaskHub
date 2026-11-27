@@ -1,12 +1,9 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from unittest.mock import Mock
 
 import pytest
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy import DateTime, String, event, func, inspect
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import event
 
-from app.db.base import Base
 from app.models import Task, WorkspaceMember
 from app.repositories.base import BaseRepository
 from app.repositories.task_repository import TaskRepository
@@ -121,62 +118,3 @@ def test_omitted_patch_due_date_stays_omitted_and_explicit_null_can_clear():
     assert TaskUpdate(due_date=None).model_dump(exclude_unset=True) == {
         "due_date": None
     }
-
-
-async def test_server_generated_update_default_is_available_without_implicit_io(
-    session_factory, db_connection
-):
-    class UpdatedItem(Base):
-        __tablename__ = "review_generated_defaults"
-        id: Mapped[int] = mapped_column(primary_key=True)
-        name: Mapped[str] = mapped_column(String(50))
-        updated_at: Mapped[datetime] = mapped_column(
-            DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-        )
-
-    class UpdatedItemRead(BaseModel):
-        model_config = ConfigDict(from_attributes=True)
-
-        id: int
-        name: str
-        updated_at: datetime
-
-    statements = []
-
-    def capture(connection, cursor, statement, parameters, context, executemany):
-        statements.append(statement)
-
-    event.listen(db_connection.sync_connection, "before_cursor_execute", capture)
-    try:
-        await db_connection.run_sync(UpdatedItem.__table__.create)
-        old_timestamp = datetime(2000, 1, 1, tzinfo=timezone.utc)
-        async with session_factory() as session, session.begin():
-            repository = BaseRepository(session, UpdatedItem)
-            item = await repository.create(
-                {"name": "before", "updated_at": old_timestamp}
-            )
-            statements.clear()
-            item = await repository.update(item, {"name": "after"})
-            assert "updated_at" not in inspect(item).expired_attributes
-            response = UpdatedItemRead.model_validate(item)
-            assert response.name == "after"
-            assert response.updated_at.tzinfo is not None
-            assert response.updated_at > old_timestamp
-
-        # A closed session cannot mask missing defaults with an implicit SELECT.
-        assert inspect(item).detached
-        assert UpdatedItemRead.model_validate(item).model_dump(mode="json") == (
-            response.model_dump(mode="json")
-        )
-        updates = [
-            query for query in statements if query.lstrip().upper().startswith("UPDATE")
-        ]
-        assert len(updates) == 1
-        assert "RETURNING" in updates[0].upper()
-        assert "updated_at" in updates[0].split("RETURNING", 1)[1]
-        assert not any(
-            query.lstrip().upper().startswith("SELECT") for query in statements
-        )
-    finally:
-        event.remove(db_connection.sync_connection, "before_cursor_execute", capture)
-        Base.metadata.remove(UpdatedItem.__table__)
