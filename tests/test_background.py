@@ -216,10 +216,20 @@ async def test_worker_skips_stale_or_ineligible_assignment(
 
 
 @pytest.fixture
-def smtp_sink(monkeypatch):
+def smtp_sink(monkeypatch, request):
     messages = Queue()
 
     class Handler:
+        attempts = 0
+
+        async def handle_RCPT(self, server, session, envelope, address, options):
+            self.attempts += 1
+            rejection = getattr(request, "param", None)
+            if rejection and self.attempts == 1:
+                return f"{rejection} Greylisted"
+            envelope.rcpt_tos.append(address)
+            return "250 OK"
+
         async def handle_DATA(self, server, session, envelope):
             messages.put(envelope)
             return "250 Message accepted"
@@ -467,6 +477,7 @@ async def test_overlapping_cleanup_workers_skip_locked_rows(migrated_database):
 def test_quit_failure_after_acceptance_does_not_retry(
     smtp_sink, monkeypatch, caplog, error
 ):
+    caplog.set_level("INFO", logger="app.jobs")
     connection = Mock()
     smtp = MagicMock()
     smtp.return_value.__enter__.return_value = connection
@@ -479,12 +490,17 @@ def test_quit_failure_after_acceptance_does_not_retry(
     assert details.await_count == 1
     assert type(error).__name__ in caplog.text
     assert "private-quit-error" not in caplog.text
+    assert "SMTP QUIT failed after delivery" in caplog.text
+    assert "SMTP delivery failed" not in caplog.text
 
 
 @pytest.mark.parametrize(
     "error",
     [
         smtplib.SMTPAuthenticationError(535, b"private-auth"),
+        smtplib.SMTPConnectError(554, b"private-connect"),
+        smtplib.SMTPDataError(550, b"private-data"),
+        ssl.SSLCertVerificationError(1, "private-certificate"),
         smtplib.SMTPRecipientsRefused(
             {"private@example.test": (550, b"private-recipient")}
         ),
@@ -542,3 +558,117 @@ def test_email_retries_only_transient_database_errors(
     assert result.failed()
     assert isinstance(result.result, error_type)
     assert details.await_count == (settings.job_max_retries + 1 if retryable else 1)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        smtplib.SMTPRecipientsRefused(
+            {"private@example.test": (451, b"private-greylist")}
+        ),
+        smtplib.SMTPDataError(421, b"private-busy"),
+        smtplib.SMTPSenderRefused(452, b"private-full", "private@example.test"),
+        smtplib.SMTPConnectError(421, b"private-connect"),
+    ],
+)
+def test_temporary_smtp_response_is_retried(smtp_sink, monkeypatch, caplog, error):
+    details = AsyncMock(return_value=("private@example.test", "Private title"))
+    monkeypatch.setattr(jobs, "assignment_details", details)
+    monkeypatch.setattr(smtplib.SMTP, "send_message", Mock(side_effect=error))
+    result = jobs.send_assignment_email.apply(args=[42, 7])
+    assert result.failed()
+    assert isinstance(result.result, jobs.EmailDeliveryError)
+    assert details.await_count == get_settings().job_max_retries + 1
+    assert type(error).__name__ in caplog.text
+    assert "private@example.test" not in caplog.text
+    assert "private-greylist" not in caplog.text
+
+
+@pytest.mark.parametrize("smtp_sink", [451], indirect=True)
+def test_greylisted_rcpt_retries_and_delivers_once(smtp_sink, monkeypatch):
+    details = AsyncMock(return_value=("member@example.test", "Greylisting recovery"))
+    monkeypatch.setattr(jobs, "assignment_details", details)
+    result = jobs.send_assignment_email.apply(args=[42, 7])
+    assert result.result is True
+    assert details.await_count == 2
+    envelope = smtp_sink.get(timeout=2)
+    assert envelope.rcpt_tos == ["member@example.test"]
+    assert smtp_sink.empty()
+
+
+@pytest.mark.parametrize("committed_batches", [1, 2])
+async def test_cleanup_budget_keeps_prior_commits_and_rolls_back_current_batch(
+    committed_batches, migrated_database, monkeypatch
+):
+    # Independent PostgreSQL connections and real commits, not savepoints.
+    engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    user_id = None
+    batch_size = 2
+    settings = get_settings().model_copy(
+        update={
+            "refresh_cleanup_budget_seconds": 1,
+            "refresh_cleanup_batch_size": batch_size,
+        }
+    )
+    monkeypatch.setattr(jobs, "get_settings", lambda: settings)
+
+    @asynccontextmanager
+    async def local_session():
+        async with factory() as session:
+            yield session
+
+    monkeypatch.setattr(jobs, "job_session", local_session)
+    original = RefreshTokenRepository.delete_expired_batch
+    calls = 0
+
+    async def delete_then_block(repository, cutoff, *, limit):
+        nonlocal calls
+        count = await original(repository, cutoff, limit=limit)
+        calls += 1
+        if calls > committed_batches:
+            # Delete in the next batch before blocking: its transaction must
+            # roll back on cancellation, while prior commits remain durable.
+            await asyncio.Event().wait()
+        return count
+
+    try:
+        now = datetime.now(UTC)
+        async with factory() as session, session.begin():
+            user = User(
+                email=f"cleanup-budget-{uuid.uuid4().hex}@example.test",
+                full_name="Cleanup budget",
+                hashed_password="TEST_LOGIN_DISABLED",
+            )
+            session.add(user)
+            await session.flush()
+            user_id = user.id
+            expired = [
+                token(user_id, now - timedelta(days=1))
+                for _ in range(committed_batches * batch_size + 1)
+            ]
+            retained = token(user_id, now + timedelta(days=1), revoked=True)
+            session.add_all([*expired, retained])
+            await session.flush()
+            last_expired_id, retained_id = expired[-1].id, retained.id
+        monkeypatch.setattr(
+            RefreshTokenRepository, "delete_expired_batch", delete_then_block
+        )
+        assert await jobs.cleanup_expired_tokens() == committed_batches * batch_size
+        assert calls == committed_batches + 1
+        async with factory() as session:
+            remaining = set(
+                (
+                    await session.scalars(
+                        select(RefreshToken.id).where(RefreshToken.user_id == user_id)
+                    )
+                ).all()
+            )
+            assert remaining == {last_expired_id, retained_id}
+    finally:
+        try:
+            async with factory() as session, session.begin():
+                if user_id is not None:
+                    await session.execute(delete(User).where(User.id == user_id))
+        finally:
+            await engine.dispose()
