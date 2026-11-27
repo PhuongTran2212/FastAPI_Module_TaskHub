@@ -34,3 +34,9 @@ class TaskPriority(StrEnum):
 class TokenType(StrEnum):
     ACCESS = "access"
     REFRESH = "refresh"
+
+
+class SmtpSecurity(StrEnum):
+    NONE = "none"
+    STARTTLS = "starttls"
+    SSL = "ssl"
